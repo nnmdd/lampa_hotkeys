@@ -20,7 +20,7 @@ function isElementVisible(element) {
 			} else {
 			  history.back();
 			}
-		  }
+		}
 		  if (inEvent.keyCode === 53) {
 			  log('Hotkeys', '5 pressed');
 			if (isElementVisible(document.querySelector('.selectbox__layer')) === false) {
@@ -28,7 +28,7 @@ function isElementVisible(element) {
 			} else {
 			  history.back();
 			}
-		  }
+		}
 		  if (inEvent.keyCode === 56) {
 			  log('Hotkeys', '8 pressed');
 			if (isElementVisible(document.querySelector('.selectbox__layer')) === false) {
@@ -36,6 +36,6 @@ function isElementVisible(element) {
 			} else {
 			  history.back();
 			}
-		  }
+		}
 	}
-});
+};
