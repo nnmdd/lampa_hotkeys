@@ -1,6 +1,6 @@
-document.addEventListener("keydown", function(inEvent){
-log('Hotkeys', 'Hotkeys loaded');
-Lampa.Platform.tv();
+function log() {
+        console.log.apply(console.log, arguments);
+      }
 function isElementVisible(element) {
         if (element.offsetWidth || 
             element.offsetHeight || 
@@ -9,10 +9,9 @@ function isElementVisible(element) {
         else
             return false;
     };
- function log() {
-        console.log.apply(console.log, arguments);
-      }
-
+document.addEventListener("keydown", function(inEvent){
+log('Hotkeys', 'Hotkeys loaded');
+Lampa.Platform.tv();
 	if (isElementVisible(document.querySelector('player')) === true) {
 		log('Hotkeys', 'player found');
 
