@@ -9,6 +9,9 @@ function isElementVisible(element) {
         else
             return false;
     };
+ function log() {
+        console.log.apply(console.log, arguments);
+      }
 
 	if (isElementVisible(document.querySelector('player')) === true) {
 		log('Hotkeys', 'player found');
