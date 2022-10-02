@@ -1,4 +1,5 @@
 (function () {
+document.addEventListener("keydown", function(inEvent){	
 Lampa.Platform.tv();
   function isElementVisible(element) {
             if (element.offsetWidth || 
@@ -9,10 +10,8 @@ Lampa.Platform.tv();
                 return false;
         }
 
-if (isElementVisible(document.querySelector('player')) === true) {
+if (isElementVisible(document.querySelector('.player')) == true) {
 	log('Hotkeys', 'player found');
-	document.addEventListener("keydown", function(inEvent){
-
 	  if (inEvent.keyCode === 48) {
 		log('Hotkeys', '0 pressed');
 		if (isElementVisible(document.querySelector('.selectbox__layer')) === false) {
