@@ -3,7 +3,18 @@ function log() {
         console.log.apply(console.log, arguments);
       }
 log('Hotkeys', 'Hotkeys loaded');
-document.addEventListener("keydown", function(inEvent){
+function listenDestroy() {
+	document.removeEventListener("keydown", listenHotkeys);
+	Lampa.Player.listener.remove('destroy', listenDestroy);	
+	Lampa.Player.listener.remove('ready',startHotkeys);
+};
+
+function startHotkeys() {
+	document.addEventListener("keydown", listenHotkeys);
+	Lampa.Player.listener.follow('destroy', listenDestroy);
+};
+
+function listenHotkeys() {
   function isElementVisible(element) {
             if (element.offsetWidth || 
                element.offsetHeight || 
@@ -36,4 +47,4 @@ document.addEventListener("keydown", function(inEvent){
       history.back();
     }
   }
-});
+};
