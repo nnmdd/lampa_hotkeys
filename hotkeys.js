@@ -2,6 +2,7 @@ Lampa.Platform.tv();
 function log() {
         console.log.apply(console.log, arguments);
       }
+log('Hotkeys', 'Hotkeys loaded');
 document.addEventListener("keydown", function(inEvent){
   function isElementVisible(element) {
             if (element.offsetWidth || 
