@@ -8,7 +8,7 @@ Lampa.Platform.tv();
                 return false;
         }
 
-if (isElementVisible(document.querySelector('.player')) === true) {
+if (isElementVisible(document.querySelector('.player-video__video')) === true) {
 	document.addEventListener("keydown", function(inEvent){
 
 	  if (inEvent.keyCode === 48) {
