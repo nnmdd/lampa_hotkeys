@@ -1,3 +1,4 @@
+(function () {
 Lampa.Platform.tv();
   function isElementVisible(element) {
             if (element.offsetWidth || 
@@ -8,7 +9,7 @@ Lampa.Platform.tv();
                 return false;
         }
 
-if (isElementVisible(document.querySelector('.player-video__video')) === true) {
+if (isElementVisible(document.querySelector('player')) === true) {
 	document.addEventListener("keydown", function(inEvent){
 
 	  if (inEvent.keyCode === 48) {
@@ -32,5 +33,5 @@ if (isElementVisible(document.querySelector('.player-video__video')) === true) {
 		  history.back();
 		}
 	  }
-	}
-});
+}	}
+})();
