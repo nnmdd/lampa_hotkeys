@@ -48,3 +48,4 @@ function listenHotkeys() {
     }
   }
 };
+Lampa.Player.listener.follow('ready',startHotkeys);
