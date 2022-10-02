@@ -38,4 +38,4 @@ function isElementVisible(element) {
 			}
 		}
 	}
-};
+});
