@@ -18,6 +18,10 @@ function startHotkeys() {
 
 
 function listenHotkeys(e) {
+	  var node = document.getElementById('.selectbox__title'),
+		var text  = node.textContent || node.innerText;
+		alert(text);
+
   function isElementVisible(element) {
             if (element.offsetWidth || 
                element.offsetHeight || 
