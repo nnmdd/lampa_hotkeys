@@ -1,4 +1,3 @@
-Lampa.Platform.tv();
 function log() {
         console.log.apply(console.log, arguments);
       }
@@ -8,13 +7,10 @@ function listenDestroy() {
 	Lampa.Player.listener.remove('destroy', listenDestroy);	
 };
 
-
-
 function startHotkeys() {
 	document.addEventListener("keydown", listenHotkeys);
 	Lampa.Player.listener.follow('destroy', listenDestroy);
 };
-
 
 function listenHotkeys(e) {
 	function isElementVisible(element) {
