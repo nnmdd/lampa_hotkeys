@@ -18,30 +18,13 @@ function startHotkeys() {
 
 
 function listenHotkeys(e) {
-
-var textContent1 = document.querySelector('.selectbox__title').innerText;
-log('Hotkeys', textContent1);
-log('Hotkeys', document.querySelector('.selectbox__title').innerText);
-	
-var selText = document.getElementById(''),
-var textC  = selText.textContent || selText.innerText;
-alert('1');
-alert(textC);
-log('Hotkeys', textC);
-
-var selText2 = document.querySelector('.selectbox__title'),
-let textC2  = selText2.textContent || selText2.innerText;
-alert('2');
-alert(textC2);
-log('Hotkeys',textC2);
-
-  function isElementVisible(element) {
-            if (element.offsetWidth || 
-               element.offsetHeight || 
-               element.getClientRects().length)
-                return true;
-            else
-                return false;
+	function isElementVisible(element) {
+		if (element.offsetWidth || 
+			element.offsetHeight || 
+			element.getClientRects().length)
+			return true;
+		else
+			return false;
         }
   if (e.keyCode === 48) {
 //    log('Hotkeys', '0 pressed');
