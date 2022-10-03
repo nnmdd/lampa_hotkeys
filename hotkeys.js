@@ -20,6 +20,11 @@ function startHotkeys() {
 function listenHotkeys(e) {
 	  var node = document.getElementById('.selectbox__title'),
 		var text  = node.textContent || node.innerText;
+		alert('1');
+		alert(text);
+	  var node = document.querySelector('.selectbox__title'),
+		var text  = node.textContent || node.innerText;
+		alert('2');
 		alert(text);
 
   function isElementVisible(element) {
