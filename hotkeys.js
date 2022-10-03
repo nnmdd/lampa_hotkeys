@@ -18,18 +18,22 @@ function startHotkeys() {
 
 
 function listenHotkeys(e) {
+
 let textContentWithHTMLTags = document.querySelector('.selectbox__title').innerHTML; 
 let textContent = document.querySelector('.selectbox__title').innerText;
-
 console.log(textContentWithHTMLTags, textContent);
+	
 	  let node = document.getElementById(''),
 		let text  = node.textContent || node.innerText;
 		alert('1');
 		alert(text);
-	  let node = document.querySelector('.selectbox__title'),
-		let text  = node.textContent || node.innerText;
+	console.log(text);
+
+	  let node2 = document.querySelector('.selectbox__title'),
+		let text2  = node.textContent || node.innerText;
 		alert('2');
-		alert(text);
+		alert(text2);
+	console.log(text2);
 
   function isElementVisible(element) {
             if (element.offsetWidth || 
