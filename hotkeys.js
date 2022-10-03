@@ -19,21 +19,21 @@ function startHotkeys() {
 
 function listenHotkeys(e) {
 
-let textContentWithHTMLTags = document.querySelector('.selectbox__title').innerHTML; 
-let textContent = document.querySelector('.selectbox__title').innerText;
-console.log(textContentWithHTMLTags, textContent);
+var textContentWithHTMLTags = document.querySelector('.selectbox__title').innerHTML; 
+var textContent1 = document.querySelector('.selectbox__title').innerText;
+console.log(textContentWithHTMLTags, textContent1);
 	
-	  let node = document.getElementById(''),
-		let text  = node.textContent || node.innerText;
-		alert('1');
-		alert(text);
-	console.log(text);
+var selText = document.getElementById(''),
+var textC  = selText.textContent || selText.innerText;
+alert('1');
+alert(textC);
+onsole.log(textC);
 
-	  let node2 = document.querySelector('.selectbox__title'),
-		let text2  = node.textContent || node.innerText;
-		alert('2');
-		alert(text2);
-	console.log(text2);
+var selText2 = document.querySelector('.selectbox__title'),
+let textC2  = selText2.textContent || selText2.innerText;
+alert('2');
+alert(textC2);
+console.log(textC2);
 
   function isElementVisible(element) {
             if (element.offsetWidth || 
