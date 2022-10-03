@@ -6,7 +6,6 @@ function log() {
 function listenDestroy() {
 	document.removeEventListener("keydown", listenHotkeys);
 	Lampa.Player.listener.remove('destroy', listenDestroy);	
-	Lampa.Player.listener.remove('ready',startHotkeys);
 };
 
 
