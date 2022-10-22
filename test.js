@@ -5,8 +5,8 @@ function setColor(element, color)
 }
 
 // where el is the concerned element
-var el = document.getElementById('elementId');
-setColor(body, 'black');
+var el = document.getElementById('body');
+setColor(el, 'black');
 </script>
 /*
 <script type='text/javascript'>
