@@ -1,3 +1,3 @@
 <script type='text/javascript'>
-  $('meta[name=theme-color]').attr('content', '#000000'));
+  document.getElementsByTagName('meta')["theme-color"].content = "#000000";
 </script>
