@@ -5,4 +5,4 @@ function listenFilter(e) {
     log('Filter', this.selectedFilter);
     }
 };
-listenFilter();
+listenFilter;
