@@ -6,4 +6,4 @@ function makeNoise() {
   $("li.menu__item.selector").css( "-moz-border-radius", "0" );
   $("li.menu__item.selector").css( "border-radius", "0" );
 };
-Lampa.Listener.follow('ready', makeNoise);
+Lampa.Listener.follow('app', makeNoise);
