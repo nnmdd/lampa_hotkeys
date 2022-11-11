@@ -1,5 +1,3 @@
-Lampa.listener.follow('ready', makeNoise);
-
 function makeNoise() {
   $(document.body).css( "background", "black" );
   $("selectbox__content").css( "background", "black" );
@@ -7,3 +5,4 @@ function makeNoise() {
   $("li.menu__item.selector").css( "-moz-border-radius", "0" );
   $("li.menu__item.selector").css( "border-radius", "0" );
 };
+Lampa.Listener.follow('app', makeNoise);
