@@ -32,7 +32,7 @@ function listenHotkeys(e) {
   }
   if (e.keyCode === 53) {
     log('Hotkeys', '5 pressed');
-    if (isElementVisible(document.querySelector('div.selectbox__content.layer--height')) === false) {
+    if (isElementVisible(document.querySelector('selectbox__layer')) === false) {
       document.querySelector('.player-panel__playlist.button.selector').click();
     } else {
       history.back();
