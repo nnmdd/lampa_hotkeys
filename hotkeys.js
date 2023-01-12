@@ -12,15 +12,16 @@ function startHotkeys() {
 	Lampa.Player.listener.follow('destroy', listenDestroy);
 };
 
-function listenHotkeys(e) {
-	function isElementVisible(element) {
+function isElementVisible(element) {
 		if (element.offsetWidth || 
 			element.offsetHeight || 
 			element.getClientRects().length)
 			return true;
 		else
 			return false;
-        }
+        };
+function listenHotkeys(e) {
+	
   if (e.keyCode === 48) {
     log('Hotkeys', '0 pressed');
     if (isElementVisible(document.querySelector('.selectbox__layer')) === false) {
@@ -31,7 +32,7 @@ function listenHotkeys(e) {
   }
   if (e.keyCode === 53) {
     log('Hotkeys', '5 pressed');
-    if (isElementVisible(document.querySelector('.selectbox__layer')) === false) {
+    if (isElementVisible(document.querySelector('div.selectbox__content.layer--height')) === false) {
       document.querySelector('.player-panel__playlist.button.selector').click();
     } else {
       history.back();
