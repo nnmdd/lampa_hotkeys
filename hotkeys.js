@@ -17,8 +17,9 @@ function listenHotkeys(e) {
   if (e.keyCode === 48 || e.keyCode === 96) {
     log('Hotkeys', '0 pressed');
     if (!document.querySelector('body.selectbox--open')) {
-      log('Hotkeys', 'subs list not visible');
-      Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
+	log('Hotkeys', 'subs list not visible');
+	document.querySelector('.player-panel__subs.button.selector').click();
+	Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
     } else {
       history.back();
     }
@@ -26,8 +27,9 @@ function listenHotkeys(e) {
   if (e.keyCode === 53 || e.keyCode === 101) {
     log('Hotkeys', '5 pressed');
     if (!document.querySelector('body.selectbox--open')) {
-      log('Hotkeys', 'playlist not visible');
-      Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
+	log('Hotkeys', 'playlist not visible');
+	document.querySelector('.player-panel__playlist.button.selector').click();
+	Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
     } else {
       history.back();
     }
@@ -35,8 +37,9 @@ function listenHotkeys(e) {
   if (e.keyCode === 56 || e.keyCode === 104) {
     log('Hotkeys', '8 pressed');
     if (!document.querySelector('body.selectbox--open')) {
-      log('Hotkeys', 'audio list not visible');
-      Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
+	log('Hotkeys', 'audio list not visible');
+	document.querySelector('.player-panel__tracks.button.selector').click();
+	Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
     } else {
       history.back();
     }
