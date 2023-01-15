@@ -1,7 +1,7 @@
 function log() {
         console.log.apply(console.log, arguments);
       }
-log('Hotkeys', 'Hotkeys loaded');
+log('Hotkeys', 'Hotkeys 1.7.0 loaded');
 function listenDestroy() {
 	document.removeEventListener("keydown", listenHotkeys);
 	Lampa.Player.listener.remove('destroy', listenDestroy);	
