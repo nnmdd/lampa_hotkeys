@@ -2,6 +2,13 @@ function log() {
         console.log.apply(console.log, arguments);
       }
 log('Hotkeys', 'Hotkeys 1.7.0 loaded');
+function openpanel(element) {
+	if (Lampa.Manifest.app_version == '1.7.0')
+		Lampa.Utils.trigger(document.querySelector(element), 'click');
+	} else {
+		document.querySelector(element).click();
+};
+
 function listenDestroy() {
 	document.removeEventListener("keydown", listenHotkeys);
 	Lampa.Player.listener.remove('destroy', listenDestroy);	
