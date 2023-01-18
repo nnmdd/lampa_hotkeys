@@ -33,7 +33,7 @@ function listenHotkeys(e) {
 	//Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
   	openPanel('.player-panel__subs.button.selector');
     } else {
-      history.back();
+      	history.back();
     }
   }
   if (e.keyCode === 53 || e.keyCode === 101) {
@@ -44,7 +44,7 @@ function listenHotkeys(e) {
 	//Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
       	openPanel('.player-panel__playlist.button.selector');
     } else {
-      history.back();
+      	history.back();
     }
   }
   if (e.keyCode === 56 || e.keyCode === 104) {
@@ -55,7 +55,7 @@ function listenHotkeys(e) {
 	//Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
       	openPanel('.player-panel__tracks.button.selector');
     } else {
-      history.back();
+      	history.back();
     }
   }
 };
