@@ -29,9 +29,7 @@ function listenHotkeys(e) {
     //log('Hotkeys', '0 pressed');
     if (!document.querySelector('body.selectbox--open')) {
 	//log('Hotkeys', 'subs list not visible');
-	//document.querySelector('.player-panel__subs.button.selector').click();
-	//Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
-  	openPanel('.player-panel__subs.button.selector');
+	openPanel('.player-panel__subs.button.selector');
     } else {
       	history.back();
     }
@@ -40,8 +38,6 @@ function listenHotkeys(e) {
     //log('Hotkeys', '5 pressed');
     if (!document.querySelector('body.selectbox--open')) {
 	//log('Hotkeys', 'playlist not visible');
-	//document.querySelector('.player-panel__playlist.button.selector').click();
-	//Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
       	openPanel('.player-panel__playlist.button.selector');
     } else {
       	history.back();
@@ -51,8 +47,6 @@ function listenHotkeys(e) {
     //log('Hotkeys', '8 pressed');
     if (!document.querySelector('body.selectbox--open')) {
 	//log('Hotkeys', 'audio list not visible');
-	//document.querySelector('.player-panel__tracks.button.selector').click();
-	//Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
       	openPanel('.player-panel__tracks.button.selector');
     } else {
       	history.back();
