@@ -1,3 +1,4 @@
+Lampa.Platform.tv();
 function log() {
         console.log.apply(console.log, arguments);
       }
