@@ -1,11 +1,14 @@
 function log() {
         console.log.apply(console.log, arguments);
       }
-log('Hotkeys', 'Hotkeys 1.7.0 loaded');
+log('Hotkeys', 'Hotkeys loaded');
+
 function openPanel(element) {
-	if (parseFloat(Lampa.Manifest.app_version) > 1.7) {
+	if ('parseFloat(Lampa.Manifest.app_version)' > '1.7') {
+        log('Hotkeys', '1.7.0');
 		Lampa.Utils.trigger(document.querySelector(element), 'click');
 	} else {
+        log('Hotkeys', 'old version');
 		document.querySelector(element).click();
 	}
 };
