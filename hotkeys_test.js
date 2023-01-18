@@ -3,7 +3,7 @@ function log() {
       }
 log('Hotkeys', 'Hotkeys 1.7.0 loaded');
 function openPanel(element) {
-	if (parseFloat(Lampa.Manifest.app_version) gtr '1.7') {
+	if (parseFloat(Lampa.Manifest.app_version) > 1.7) {
 		Lampa.Utils.trigger(document.querySelector(element), 'click');
 	} else {
 		document.querySelector(element).click();
