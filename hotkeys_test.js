@@ -31,7 +31,7 @@ function listenHotkeys(e) {
 	//log('Hotkeys', 'subs list not visible');
 	//document.querySelector('.player-panel__subs.button.selector').click();
 	//Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
-  openPanel('.player-panel__subs.button.selector');
+  	openPanel('.player-panel__subs.button.selector');
     } else {
       history.back();
     }
@@ -42,7 +42,7 @@ function listenHotkeys(e) {
 	//log('Hotkeys', 'playlist not visible');
 	//document.querySelector('.player-panel__playlist.button.selector').click();
 	//Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
-      openPanel('.player-panel__playlist.button.selector');
+      	openPanel('.player-panel__playlist.button.selector');
     } else {
       history.back();
     }
@@ -53,7 +53,7 @@ function listenHotkeys(e) {
 	//log('Hotkeys', 'audio list not visible');
 	//document.querySelector('.player-panel__tracks.button.selector').click();
 	//Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
-      openPanel('.player-panel__tracks.button.selector');
+      	openPanel('.player-panel__tracks.button.selector');
     } else {
       history.back();
     }
