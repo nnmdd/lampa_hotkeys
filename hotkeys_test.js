@@ -5,7 +5,7 @@ function log() {
 log('Hotkeys', 'Hotkeys loaded');
 
 function openPanel(element) {
-	if ('parseFloat(Lampa.Manifest.app_version)' > '1.7') {
+	if ('parseFloat(Lampa.Manifest.app_version)' >= '1.7') {
         //log('Hotkeys', '1.7.0');
 		Lampa.Utils.trigger(document.querySelector(element), 'click');
 	} else {
