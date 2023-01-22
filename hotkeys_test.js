@@ -26,7 +26,7 @@ function startHotkeys() {
 
 function listenHotkeys(e) {
 
-log('Hotkeys', e.keyCode);
+//log('Hotkeys', e.keyCode);
 	
   if (e.keyCode === 166 || e.keyCode === 427 || e.keyCode === 27 || e.keyCode === 33) {
 	openPanel('.player-panel__next.button.selector');
