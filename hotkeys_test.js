@@ -26,6 +26,14 @@ function startHotkeys() {
 
 function listenHotkeys(e) {
 	
+  if (e.keyCode === 166 ) {
+	openPanel('.player-panel__next.button.selector');
+  }
+
+  if (e.keyCode === 167 ) {
+	openPanel('.player-panel__prev.button.selector');
+  }
+	
   if (e.keyCode === 48 || e.keyCode === 96) {
     //log('Hotkeys', '0 pressed');
     if (!document.querySelector('body.selectbox--open')) {
