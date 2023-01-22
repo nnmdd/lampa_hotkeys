@@ -26,11 +26,11 @@ function startHotkeys() {
 
 function listenHotkeys(e) {
 	
-  if (e.keyCode === 166 ) {
+  if (e.keyCode === 166 || e.keyCode === 427) {
 	openPanel('.player-panel__next.button.selector');
   }
 
-  if (e.keyCode === 167 ) {
+  if (e.keyCode === 167 || e.keyCode === 428) {
 	openPanel('.player-panel__prev.button.selector');
   }
 	
