@@ -28,12 +28,12 @@ function listenHotkeys(e) {
 
 log('Hotkeys', e.keyCode);
 	
-  if (e.keyCode === 166 || e.keyCode === 427 || e.keyCode === 27 || e.keyCode === 33) {
+  if (e.keyCode === 166 || e.keyCode === 427 || e.keyCode === 27 || e.keyCode === 33 || e.keyCode === 892) {
 	  document.querySelector('.player-panel__next.button.selector').click();
     //openPanel('.player-panel__next.button.selector');
   }
 
-  if (e.keyCode === 167 || e.keyCode === 428 || e.keyCode === 28 || e.keyCode === 34) {
+  if (e.keyCode === 167 || e.keyCode === 428 || e.keyCode === 28 || e.keyCode === 34 || e.keyCode === 893) {
   document.querySelector('.player-panel__prev.button.selector').click();
 	//openPanel('.player-panel__prev.button.selector');
   }
