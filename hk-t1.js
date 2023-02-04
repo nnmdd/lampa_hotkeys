@@ -2,7 +2,7 @@ Lampa.Platform.tv();
 function log() {
         console.log.apply(console.log, arguments);
       }
-log('Hotkeys', 'Hotkeys 172 loaded');
+log('Hotkeys', 'Hotkeys test trigger loaded');
 
 function openPanel(element) {
 	if ('parseFloat(Lampa.Manifest.app_version)' >= '1.7') {
