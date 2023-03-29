@@ -29,21 +29,24 @@ function listenHotkeys(e) {
 log('Hotkeys', e.keyCode);
 	
   if (e.keyCode === 166 || e.keyCode === 427 || e.keyCode === 27 || e.keyCode === 33 || e.keyCode === 892 || e.keyCode === 68) {
-	  Lampa.Utils.trigger(document.querySelector('.player-panel__next.button.selector'), 'click');
-    //openPanel('.player-panel__next.button.selector');
+	document.querySelector('.player-panel__next.button.selector').click();
+	//Lampa.Utils.trigger(document.querySelector('.player-panel__next.button.selector'), 'click');
+	//openPanel('.player-panel__next.button.selector');
   }
 
   if (e.keyCode === 167 || e.keyCode === 428 || e.keyCode === 28 || e.keyCode === 34|| e.keyCode === 893 || e.keyCode === 65) {
-    Lampa.Utils.trigger(document.querySelector('.player-panel__prev.button.selector'), 'click');
+	document.querySelector('.player-panel__prev.button.selector').click();
+	//Lampa.Utils.trigger(document.querySelector('.player-panel__prev.button.selector'), 'click');
 	//openPanel('.player-panel__prev.button.selector');
   }
 	
   if (e.keyCode === 48 || e.keyCode === 96 || e.keyCode === 17) {
     //log('Hotkeys', '0 pressed');
     if (!document.querySelector('body.selectbox--open')) {
+	document.querySelector('.player-panel__subs.button.selector').click();
 	//log('Hotkeys', 'subs list not visible');
-    Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
-	  //openPanel('.player-panel__subs.button.selector');
+	//Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
+	//openPanel('.player-panel__subs.button.selector');
     } else {
       	history.back();
     }
@@ -51,8 +54,9 @@ log('Hotkeys', e.keyCode);
   if (e.keyCode === 53 || e.keyCode === 101 || e.keyCode === 9) {
     //log('Hotkeys', '5 pressed');
     if (!document.querySelector('body.selectbox--open')) {
+	document.querySelector('.player-panel__playlist.button.selector').click();
 	//log('Hotkeys', 'playlist not visible');
-      Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
+	//Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
       	//openPanel('.player-panel__playlist.button.selector');
     } else {
       	history.back();
@@ -61,8 +65,9 @@ log('Hotkeys', e.keyCode);
   if (e.keyCode === 56 || e.keyCode === 104 || e.keyCode === 13) {
     //log('Hotkeys', '8 pressed');
     if (!document.querySelector('body.selectbox--open')) {
+	document.querySelector('.player-panel__tracks.button.selector').click();
 	//log('Hotkeys', 'audio list not visible');
-      Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
+	//Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
       	//openPanel('.player-panel__tracks.button.selector');
     } else {
       	history.back();
