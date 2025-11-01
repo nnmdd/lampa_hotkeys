@@ -53,7 +53,7 @@ log('Hotkeys', e.keyCode);
   }
   if (e.keyCode === 53 || e.keyCode === 101 || e.keyCode === 9) {
     //log('Hotkeys', '5 pressed');
-    if (!document.querySelector('body.selectbox--open')) {
+    //if (!document.querySelector('body.selectbox--open')) {
 	//document.querySelector('.player-panel__playlist.button.selector').click();
 	//log('Hotkeys', 'playlist not visible');
 	Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
