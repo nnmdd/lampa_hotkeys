@@ -26,7 +26,7 @@ function listenDestroy() {
 function startHotkeys() {
     document.addEventListener("keydown", listenHotkeys);
     Lampa.Player.listener.follow('destroy', listenDestroy);
-    log('Hotkeys', 'Hotkeys listener started');
+    log('Hotkeys', 'Hotkeys 1.8 listener started');
 };
 
 const KEYS = {
