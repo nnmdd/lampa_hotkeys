@@ -4,7 +4,7 @@ function log() {
       }
 log('Hotkeys', 'Hotkeys test trigger v09.11.2024 loaded');
 
-function openPanel(element) {
+function HKopenPanel(element) {
 	if (parseFloat(Lampa.Manifest.app_version) >= '1.7') {
         //log('Hotkeys', '1.7.0');
 		Lampa.Utils.trigger(document.querySelector(element), 'click');
@@ -14,17 +14,17 @@ function openPanel(element) {
 	}
 };
 
-function listenHotkeysDestroy() {
-	document.removeEventListener("keydown", listenHotkeys);
-	Lampa.Player.listener.remove('destroy', listenHotkeysDestroy);	
+function ListenHKDestroy() {
+	document.removeEventListener("keydown", listenHK);
+	Lampa.Player.listener.remove('destroy', ListenHKDestroy);	
 };
 
-function startHotkeys() {
-	document.addEventListener("keydown", listenHotkeys);
-	Lampa.Player.listener.follow('destroy', listenHotkeysDestroy);
+function StartHK() {
+	document.addEventListener("keydown", listenHK);
+	Lampa.Player.listener.follow('destroy', ListenHKDestroy);
 };
 
-function listenHotkeys(e) {
+function listenHK(e) {
 
 log('Hotkeys', e.keyCode);
 	
@@ -73,4 +73,4 @@ log('Hotkeys', e.keyCode);
   }
 };
 
-Lampa.Player.listener.follow('ready',startHotkeys);
+Lampa.Player.listener.follow('ready',StartHK);
