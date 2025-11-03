@@ -1,7 +1,7 @@
 Lampa.Platform.tv();
 
 function log(...args) {
-    console.log('Hotkeys:', ...args);
+    console.log('Hotkeys', ...args);
 }
 
 function openPanel(elementSelector) {
@@ -60,24 +60,18 @@ const CLOSE_KEYS = [
 
 function listenHotkeys(e) {
     const keyCode = e.keyCode;
-
     if (document.querySelector('body.selectbox--open')) {
-        
         if (CLOSE_KEYS.includes(keyCode)) {
             history.back();
-            
             e.preventDefault(); 
             e.stopPropagation();
             return;
         }
-        
-        return;
+         return;
     }
-
     for (const action of Object.values(ALL_ACTIONS)) {
         if (action.codes.includes(keyCode)) {
             openPanel(action.selector);
-            
             e.preventDefault();
             e.stopPropagation();
             return;
