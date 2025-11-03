@@ -1,34 +1,4 @@
 Lampa.Platform.tv();
-
-function log(...args) {
-    console.log('Hotkeys', ...args);
-}
-
-function openPanel(elementSelector) {
-    const el = document.querySelector(elementSelector);
-    if (!el) {
-        log('Error', `Element not found: ${elementSelector}`);
-        return;
-    }
-    
-    if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
-        Lampa.Utils.trigger(el, 'click');
-    } else {
-        el.click();
-    }
-};
-
-function listenDestroy() {
-    document.removeEventListener("keydown", listenHotkeys);
-    Lampa.Player.listener.remove('destroy', listenDestroy);    
-};
-
-function startHotkeys() {
-    document.addEventListener("keydown", listenHotkeys);
-    Lampa.Player.listener.follow('destroy', listenDestroy);
-    log('Hotkeys', 'Hotkeys 1.8 listener started');
-};
-
 const KEYS = {
     next: {
         codes: [166, 427, 27, 33, 892, 68], 
@@ -58,6 +28,10 @@ const CLOSE_KEYS = [
     ...KEYS.tracks.codes
 ];
 
+function log(...args) {
+    console.log('Hotkeys', ...args);
+}
+
 function listenHotkeys(e) {
     const keyCode = e.keyCode;
     if (document.querySelector('body.selectbox--open')) {
@@ -77,6 +51,31 @@ function listenHotkeys(e) {
             return;
         }
     }
+};
+
+function openPanel(elementSelector) {
+    const el = document.querySelector(elementSelector);
+    if (!el) {
+        log('Error', `Element not found: ${elementSelector}`);
+        return;
+    }
+    
+    if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
+        Lampa.Utils.trigger(el, 'click');
+    } else {
+        el.click();
+    }
+};
+
+function listenDestroy() {
+    document.removeEventListener("keydown", listenHotkeys);
+    Lampa.Player.listener.remove('destroy', listenDestroy);    
+};
+
+function startHotkeys() {
+    document.addEventListener("keydown", listenHotkeys);
+    Lampa.Player.listener.follow('destroy', listenDestroy);
+    log('Hotkeys', 'Hotkeys 1.8 listener started');
 };
 
 Lampa.Player.listener.follow('ready', startHotkeys);
