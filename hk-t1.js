@@ -1,11 +1,9 @@
 Lampa.Platform.tv();
-function log() {
-        console.log.apply(console.log, arguments);
-      }
-log('Hotkeys', 'Hotkeys test trigger v09.11.2024 loaded');
-
+function log(...args) {
+    console.log('Hotkeys:', ...args); // Принимаем аргументы и добавляем префикс
+}
 function HKopenPanel(element) {
-	if (parseFloat(Lampa.Manifest.app_version) >= '1.7') {
+	if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
         //log('Hotkeys', '1.7.0');
 		Lampa.Utils.trigger(document.querySelector(element), 'click');
 	} else {
@@ -25,52 +23,47 @@ function StartHK() {
 };
 
 function listenHK(e) {
+    log('Hotkeys', e.keyCode);
+    
+    // Маппинг для кнопок "Следующий/Предыдущий"
+    const simpleActions = {
+        // Кнопки для "Следующий" (e.keyCode === 166 || ... || 68)
+        '166,427,27,33,892,68': '.player-panel__next.button.selector',
+        // Кнопки для "Предыдущий" (e.keyCode === 167 || ... || 65)
+        '167,428,28,34,893,65': '.player-panel__prev.button.selector'
+    };
 
-log('Hotkeys', e.keyCode);
-	
-	if (e.keyCode === 166 || e.keyCode === 427 || e.keyCode === 27 || e.keyCode === 33 || e.keyCode === 892 || e.keyCode === 68) {
-	//document.querySelector('.player-panel__next.button.selector').click();
-	Lampa.Utils.trigger(document.querySelector('.player-panel__next.button.selector'), 'click');
-	//openPanel('.player-panel__next.button.selector');
-  }
-	if (e.keyCode === 167 || e.keyCode === 428 || e.keyCode === 28 || e.keyCode === 34|| e.keyCode === 893 || e.keyCode === 65) {
-	//document.querySelector('.player-panel__prev.button.selector').click();
-	Lampa.Utils.trigger(document.querySelector('.player-panel__prev.button.selector'), 'click');
-	//openPanel('.player-panel__prev.button.selector');
-  }
-	if (e.keyCode === 48 || e.keyCode === 96 || e.keyCode === 17) {
-    //log('Hotkeys', '0 pressed');
-    	if (!document.querySelector('body.selectbox--open')) {
-	//document.querySelector('.player-panel__subs.button.selector').click();
-	//log('Hotkeys', 'subs list not visible');
-			Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
-	//openPanel('.player-panel__subs.button.selector');
-  		} else {
-      	history.back();
-  		}
-  	}
-	if (e.keyCode === 53 || e.keyCode === 101 || e.keyCode === 9) {
-    //log('Hotkeys', '5 pressed');
-    	if (!document.querySelector('body.selectbox--open')) {
-	//document.querySelector('.player-panel__playlist.button.selector').click();
-	//log('Hotkeys', 'playlist not visible');
-			Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
-      	//openPanel('.player-panel__playlist.button.selector');
-		} else {
-      	history.back();
-    	}
-  	}
-	if (e.keyCode === 56 || e.keyCode === 104 || e.keyCode === 13) {
-    //log('Hotkeys', '8 pressed');
-    	if (!document.querySelector('body.selectbox--open')) {
-	//document.querySelector('.player-panel__tracks.button.selector').click();
-	//log('Hotkeys', 'audio list not visible');
-			Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
-      	//openPanel('.player-panel__tracks.button.selector');
-    	} else {
-      		history.back();
-    	}
-  }
+    // Проверяем простые действия
+    for (const codes in simpleActions) {
+        if (codes.split(',').includes(String(e.keyCode))) {
+            Lampa.Utils.trigger(document.querySelector(simpleActions[codes]), 'click');
+            return; // Выходим после обработки хоткея
+        }
+    }
+
+    // Обработка сложных действий (списки)
+    if (!document.querySelector('body.selectbox--open')) {
+        const listActions = {
+            // Кнопки для Субтитров (0, 96, 17)
+            '48,96,17': '.player-panel__subs.button.selector',
+            // Кнопки для Плейлиста (53, 101, 9)
+            '53,101,9': '.player-panel__playlist.button.selector',
+            // Кнопки для Аудиодорожек (56, 104, 13)
+            '56,104,13': '.player-panel__tracks.button.selector'
+        };
+
+        for (const codes in listActions) {
+            if (codes.split(',').includes(String(e.keyCode))) {
+                Lampa.Utils.trigger(document.querySelector(listActions[codes]), 'click');
+                return;
+            }
+        }
+    } else {
+        // Если открыт селектбокс, и нажата одна из клавиш списков, то history.back()
+        if ([48,96,17, 53,101,9, 56,104,13].includes(e.keyCode)) {
+             history.back();
+        }
+    }
 };
 
 Lampa.Player.listener.follow('ready',StartHK);
