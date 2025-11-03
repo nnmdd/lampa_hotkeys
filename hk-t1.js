@@ -4,7 +4,7 @@ function log(...args) {
     console.log('Hotkeys:', ...args); // Логирование
 }
 
-// 1. Унифицированная функция для клика по элементу
+// 1. Унифицированная функция для клика по элементу (не изменена)
 function HKopenPanel(element) {
     const el = document.querySelector(element);
     if (!el) {
@@ -14,8 +14,7 @@ function HKopenPanel(element) {
     
     // В новой версии Lampa (>= 1.7) используем Lampa.Utils.trigger
     if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
-        // Дополнительный совет: иногда нужно сфокусироваться перед триггером
-        // el.focus(); 
+        // el.focus(); // Опционально, если Lampa.Utils.trigger не работает
         Lampa.Utils.trigger(el, 'click');
     } else {
         // Для старых версий
@@ -23,14 +22,11 @@ function HKopenPanel(element) {
     }
 };
 
-// 2. Обработчик нажатия клавиш
+// 2. Обработчик нажатия клавиш (исправлен)
 function listenHK(e) {
     log('Event', e.keyCode);
     
-    // --- ВАЖНОЕ ИСПРАВЛЕНИЕ: Предотвращение конфликтов событий ---
-    // Это нужно, чтобы Lampa или другие обработчики не перехватили клавишу
-    e.preventDefault(); 
-    e.stopPropagation();
+    // --- ИСПРАВЛЕНИЕ: Нет глобального e.preventDefault()/e.stopPropagation() ---
 
     // Маппинг для кнопок "Следующий/Предыдущий"
     const simpleActions = {
@@ -44,7 +40,12 @@ function listenHK(e) {
     for (const codes in simpleActions) {
         if (codes.split(',').includes(String(e.keyCode))) {
             HKopenPanel(simpleActions[codes]); // Использование HKopenPanel
-            return;
+            
+            // --- ПРЕРЫВАЕМ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ОБРАБОТКИ ---
+            e.preventDefault(); 
+            e.stopPropagation();
+            
+            return; // Выходим после обработки хоткея
         }
     }
 
@@ -63,6 +64,11 @@ function listenHK(e) {
         for (const codes in listActions) {
             if (codes.split(',').includes(String(e.keyCode))) {
                 HKopenPanel(listActions[codes]); // Использование HKopenPanel
+                
+                // --- ПРЕРЫВАЕМ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ОБРАБОТКИ ---
+                e.preventDefault(); 
+                e.stopPropagation();
+                
                 return;
             }
         }
@@ -70,14 +76,20 @@ function listenHK(e) {
         // Если открыт селектбокс, и нажата одна из клавиш списков, то history.back()
         const closeKeys = [48, 96, 17, 53, 101, 9, 56, 104, 13];
         if (closeKeys.includes(e.keyCode)) {
-             // Закрытие работает. history.back() должен работать, если Lampa не изменила этот механизм.
              history.back(); 
+             
+             // --- ПРЕРЫВАЕМ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ОБРАБОТКИ ---
+             e.preventDefault(); 
+             e.stopPropagation();
+             
              return;
         }
     }
+    
+    // Если keyCode не совпал ни с одним из ваших, событие keydown будет передано Lampa для стандартной обработки.
 };
 
-// 3. Управление слушателями
+// 3. Управление слушателями (не изменено)
 function ListenHKDestroy() {
     document.removeEventListener("keydown", listenHK);
     Lampa.Player.listener.remove('destroy', ListenHKDestroy);    
@@ -88,5 +100,5 @@ function StartHK() {
     Lampa.Player.listener.follow('destroy', ListenHKDestroy);
 };
 
-// 4. Запуск после готовности плеера
+// 4. Запуск после готовности плеера (не изменено)
 Lampa.Player.listener.follow('ready',StartHK);
