@@ -4,7 +4,7 @@ Lampa.Platform.tv();
  * Универсальная функция логирования с префиксом.
  */
 function log(...args) {
-    console.log('Hotkeys:', ...args);
+    console.log('Hotkeys', ...args);
 }
 
 /**
