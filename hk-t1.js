@@ -57,8 +57,8 @@ function listenHK(e) {
             '48,96,17': '.player-panel__subs.button.selector',
             // Плейлист: 53, 101, 9
             '53,101,9': '.player-panel__playlist.button.selector',
-            // Аудиодорожки: 56, 104, 13
-            '56,104,13': '.player-panel__tracks.button.selector'
+            // Аудиодорожки: 56, 104
+            '56,104': '.player-panel__tracks.button.selector'
         };
 
         for (const codes in listActions) {
