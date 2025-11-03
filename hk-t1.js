@@ -1,69 +1,92 @@
 Lampa.Platform.tv();
+
 function log(...args) {
-    console.log('Hotkeys:', ...args); // Принимаем аргументы и добавляем префикс
+    console.log('Hotkeys:', ...args); // Логирование
 }
+
+// 1. Унифицированная функция для клика по элементу
 function HKopenPanel(element) {
-	if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
-        //log('Hotkeys', '1.7.0');
-		Lampa.Utils.trigger(document.querySelector(element), 'click');
-	} else {
-        //log('Hotkeys', 'old version');
-		document.querySelector(element).click();
-	}
-};
-
-function ListenHKDestroy() {
-	document.removeEventListener("keydown", listenHK);
-	Lampa.Player.listener.remove('destroy', ListenHKDestroy);	
-};
-
-function StartHK() {
-	document.addEventListener("keydown", listenHK);
-	Lampa.Player.listener.follow('destroy', ListenHKDestroy);
-};
-
-function listenHK(e) {
-    log('Hotkeys', e.keyCode);
+    const el = document.querySelector(element);
+    if (!el) {
+        log('Error', `Element not found: ${element}`);
+        return;
+    }
     
+    // В новой версии Lampa (>= 1.7) используем Lampa.Utils.trigger
+    if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
+        // Дополнительный совет: иногда нужно сфокусироваться перед триггером
+        // el.focus(); 
+        Lampa.Utils.trigger(el, 'click');
+    } else {
+        // Для старых версий
+        el.click();
+    }
+};
+
+// 2. Обработчик нажатия клавиш
+function listenHK(e) {
+    log('Event', e.keyCode);
+    
+    // --- ВАЖНОЕ ИСПРАВЛЕНИЕ: Предотвращение конфликтов событий ---
+    // Это нужно, чтобы Lampa или другие обработчики не перехватили клавишу
+    e.preventDefault(); 
+    e.stopPropagation();
+
     // Маппинг для кнопок "Следующий/Предыдущий"
     const simpleActions = {
-        // Кнопки для "Следующий" (e.keyCode === 166 || ... || 68)
+        // Следующий: 166, 427, 27, 33, 892, 68
         '166,427,27,33,892,68': '.player-panel__next.button.selector',
-        // Кнопки для "Предыдущий" (e.keyCode === 167 || ... || 65)
+        // Предыдущий: 167, 428, 28, 34, 893, 65
         '167,428,28,34,893,65': '.player-panel__prev.button.selector'
     };
 
-    // Проверяем простые действия
+    // 2.1. Проверяем простые действия
     for (const codes in simpleActions) {
         if (codes.split(',').includes(String(e.keyCode))) {
-            Lampa.Utils.trigger(document.querySelector(simpleActions[codes]), 'click');
-            return; // Выходим после обработки хоткея
+            HKopenPanel(simpleActions[codes]); // Использование HKopenPanel
+            return;
         }
     }
 
-    // Обработка сложных действий (списки)
+    // 2.2. Обработка сложных действий (списки)
+    // Проверка, что selectbox НЕ открыт
     if (!document.querySelector('body.selectbox--open')) {
         const listActions = {
-            // Кнопки для Субтитров (0, 96, 17)
+            // Субтитры: 48, 96, 17
             '48,96,17': '.player-panel__subs.button.selector',
-            // Кнопки для Плейлиста (53, 101, 9)
+            // Плейлист: 53, 101, 9
             '53,101,9': '.player-panel__playlist.button.selector',
-            // Кнопки для Аудиодорожек (56, 104, 13)
+            // Аудиодорожки: 56, 104, 13
             '56,104,13': '.player-panel__tracks.button.selector'
         };
 
         for (const codes in listActions) {
             if (codes.split(',').includes(String(e.keyCode))) {
-                Lampa.Utils.trigger(document.querySelector(listActions[codes]), 'click');
+                HKopenPanel(listActions[codes]); // Использование HKopenPanel
                 return;
             }
         }
     } else {
         // Если открыт селектбокс, и нажата одна из клавиш списков, то history.back()
-        if ([48,96,17, 53,101,9, 56,104,13].includes(e.keyCode)) {
-             history.back();
+        const closeKeys = [48, 96, 17, 53, 101, 9, 56, 104, 13];
+        if (closeKeys.includes(e.keyCode)) {
+             // Закрытие работает. history.back() должен работать, если Lampa не изменила этот механизм.
+             history.back(); 
+             return;
         }
     }
 };
 
+// 3. Управление слушателями
+function ListenHKDestroy() {
+    document.removeEventListener("keydown", listenHK);
+    Lampa.Player.listener.remove('destroy', ListenHKDestroy);    
+};
+
+function StartHK() {
+    document.addEventListener("keydown", listenHK);
+    Lampa.Player.listener.follow('destroy', ListenHKDestroy);
+};
+
+// 4. Запуск после готовности плеера
 Lampa.Player.listener.follow('ready',StartHK);
