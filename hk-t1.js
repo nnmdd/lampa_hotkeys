@@ -14,14 +14,14 @@ function openPanel(element) {
 	}
 };
 
-function listenDestroy() {
+function listenHotkeysDestroy() {
 	document.removeEventListener("keydown", listenHotkeys);
-	Lampa.Player.listener.remove('destroy', listenDestroy);	
+	Lampa.Player.listener.remove('destroy', listenHotkeysDestroy);	
 };
 
 function startHotkeys() {
 	document.addEventListener("keydown", listenHotkeys);
-	Lampa.Player.listener.follow('destroy', listenDestroy);
+	Lampa.Player.listener.follow('destroy', listenHotkeysDestroy);
 };
 
 function listenHotkeys(e) {
