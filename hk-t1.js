@@ -1,35 +1,5 @@
 Lampa.Platform.tv();
-
-function log(...args) {
-    console.log('Hotkeys', ...args);
-}
-
-function openPanel(elementSelector) {
-    const el = document.querySelector(elementSelector);
-    if (!el) {
-        log('Error', `Element not found: ${elementSelector}`);
-        return;
-    }
-    
-    if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
-        Lampa.Utils.trigger(el, 'click');
-    } else {
-        el.click();
-    }
-};
-
-function listenDestroy() {
-    document.removeEventListener("keydown", listenHotkeys);
-    Lampa.Player.listener.remove('destroy', listenDestroy);    
-};
-
-function startHotkeys() {
-    document.addEventListener("keydown", listenHotkeys);
-    Lampa.Player.listener.follow('destroy', listenDestroy);
-    log('Hotkeys', 'Hotkeys listener started');
-};
-
-const ALL_ACTIONS = {
+const KEYS = {
     next: {
         codes: [166, 427, 27, 33, 892, 68], 
         selector: '.player-panel__next.button.selector'
@@ -53,10 +23,14 @@ const ALL_ACTIONS = {
 };
 
 const CLOSE_KEYS = [
-    ...ALL_ACTIONS.subs.codes, 
-    ...ALL_ACTIONS.playlist.codes, 
-    ...ALL_ACTIONS.tracks.codes
+    ...KEYS.subs.codes, 
+    ...KEYS.playlist.codes, 
+    ...KEYS.tracks.codes
 ];
+
+function log(...args) {
+    console.log('Hotkeys', ...args);
+}
 
 function listenHotkeys(e) {
     const keyCode = e.keyCode;
@@ -69,7 +43,7 @@ function listenHotkeys(e) {
         }
          return;
     }
-    for (const action of Object.values(ALL_ACTIONS)) {
+    for (const action of Object.values(KEYS)) {
         if (action.codes.includes(keyCode)) {
             openPanel(action.selector);
             e.preventDefault();
@@ -77,6 +51,31 @@ function listenHotkeys(e) {
             return;
         }
     }
+};
+
+function openPanel(elementSelector) {
+    const el = document.querySelector(elementSelector);
+    if (!el) {
+        log('Error', `Element not found: ${elementSelector}`);
+        return;
+    }
+    
+    if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
+        Lampa.Utils.trigger(el, "hover:enter");
+    } else {
+        el.click();
+    }
+};
+
+function listenDestroy() {
+    document.removeEventListener("keydown", listenHotkeys);
+    Lampa.Player.listener.remove('destroy', listenDestroy);    
+};
+
+function startHotkeys() {
+    document.addEventListener("keydown", listenHotkeys);
+    Lampa.Player.listener.follow('destroy', listenDestroy);
+    log('Hotkeys', 'Hotkeys 1.8 listener started');
 };
 
 Lampa.Player.listener.follow('ready', startHotkeys);
