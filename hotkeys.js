@@ -61,7 +61,7 @@ function openPanel(elementSelector) {
     }
     
     if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
-        Lampa.Utils.trigger(el, 'click');
+        Lampa.Utils.trigger(el, "hover:enter");
     } else {
         el.click();
     }
