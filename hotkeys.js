@@ -1,3 +1,5 @@
+(function () {
+  'use strict'
 Lampa.Platform.tv();
 const KEYS = {
     next: {
@@ -75,7 +77,8 @@ function listenDestroy() {
 function startHotkeys() {
     document.addEventListener("keydown", listenHotkeys);
     Lampa.Player.listener.follow('destroy', listenDestroy);
-    log('Hotkeys', 'Hotkeys 1.8 listener started');
+    log('Hotkeys 1.8 listener started');
 };
 
 Lampa.Player.listener.follow('ready', startHotkeys);
+})()
