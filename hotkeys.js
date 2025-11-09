@@ -1,5 +1,4 @@
 (function () {
-  'use strict'
 Lampa.Platform.tv();
 const KEYS = {
     next: {
