@@ -34,9 +34,9 @@
             targetSelector = '.player-panel__playlist.button.selector';
         } else if (keyCode === 56 || keyCode === 104) {
             targetSelector = '.player-panel__tracks.button.selector';
-        } else if (keyCode === 166 || e.keyCode === 427 || e.keyCode === 27 || e.keyCode === 33) {
+        } else if (keyCode === 166 || keyCode === 427 || keyCode === 27 || keyCode === 33) {
 	        targetSelector = '.player-panel__next.button.selector';
-        } else if (e.keyCode === 167 || e.keyCode === 428 || e.keyCode === 28 || e.keyCode === 34) {
+        } else if (keyCode === 167 || keyCode === 428 || keyCode === 28 || keyCode === 34) {
 	        targetSelector = '.player-panel__prev.button.selector';
         }
 
