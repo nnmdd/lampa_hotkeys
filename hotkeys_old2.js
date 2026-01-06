@@ -1,11 +1,17 @@
 (function () {
+    "use strict";
+
+    if (typeof Lampa === 'undefined') return;
+
     Lampa.Platform.tv();
 
     function log() {
-        console.log.apply(console.log, arguments);
+        if (window.console && console.log) {
+            console.log.apply(console, arguments);
+        }
     }
 
-    log('Hotkeys', '1.7.1b loaded');
+    log('Hotkeys', '1.7.1b');
 
     function listenDestroy() {
         document.removeEventListener("keydown", listenHotkeys);
@@ -15,43 +21,34 @@
     function startHotkeys() {
         document.addEventListener("keydown", listenHotkeys);
         Lampa.Player.listener.follow('destroy', listenDestroy);
-    } 
+    }
 
     function listenHotkeys(e) {
-        // Клавиша 0
-        if (e.keyCode === 48 || e.keyCode === 96) {
-            if (!document.querySelector('body.selectbox--open')) {
-                Lampa.Utils.trigger(document.querySelector('.player-panel__subs.button.selector'), 'click');
-                e.preventDefault(); 
-                e.stopPropagation();
-                return;
+        var keyCode = e.keyCode || e.which;
+        var isMenuOpen = document.body.classList.contains('selectbox--open');
+        var targetSelector = '';
+
+        if (keyCode === 48 || keyCode === 96) {
+            targetSelector = '.player-panel__subs.button.selector';
+        } else if (keyCode === 53 || keyCode === 101) {
+            targetSelector = '.player-panel__playlist.button.selector';
+        } else if (keyCode === 56 || keyCode === 104) {
+            targetSelector = '.player-panel__tracks.button.selector';
+        }
+
+        if (targetSelector) {
+            if (!isMenuOpen) {
+                var element = document.querySelector(targetSelector);
+                if (element) {
+                    Lampa.Utils.trigger(element, 'click');
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
             } else {
-                history.back();
-            }
-        } 
-        // Клавиша 5
-        else if (e.keyCode === 53 || e.keyCode === 101) {
-            if (!document.querySelector('body.selectbox--open')) {
-                Lampa.Utils.trigger(document.querySelector('.player-panel__playlist.button.selector'), 'click');
-                e.preventDefault(); 
-                e.stopPropagation();
-                return;              
-            } else {
-                history.back();
-            }
-        } 
-        // Клавиша 8
-        else if (e.keyCode === 56 || e.keyCode === 104) {
-            if (!document.querySelector('body.selectbox--open')) {
-                Lampa.Utils.trigger(document.querySelector('.player-panel__tracks.button.selector'), 'click');
-                e.preventDefault(); 
-                e.stopPropagation();
-                return;             
-            } else {
-                history.back();
+                window.history.back();
             }
         }
-    } 
+    }
 
     Lampa.Player.listener.follow('ready', startHotkeys);
 })();
