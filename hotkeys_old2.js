@@ -40,7 +40,8 @@
             if (!isMenuOpen) {
                 var element = document.querySelector(targetSelector);
                 if (element) {
-                    Lampa.Utils.trigger(element, 'click');
+                    element.click();
+                    //Lampa.Utils.trigger(element, 'click');
                     e.preventDefault();
                     e.stopPropagation();
                 }
