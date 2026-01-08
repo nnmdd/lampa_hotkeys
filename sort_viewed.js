@@ -1,5 +1,5 @@
 (function () {
-    console.log('[SmartSort] Deep Intercept Version Loading...');
+    console.log('[SmartSort] Final Strategy: Controller Patching...');
 
     Lampa.Lang.add({
         torrent_sort_smart: {
@@ -8,98 +8,86 @@
         }
     });
 
-    // 1. ПРИНУДИТЕЛЬНАЯ СОРТИРОВКА
-    function forceSort() {
-        var activity = Lampa.Activity.active();
-        if (activity && activity.component === 'torrent') {
-            var comp = activity.instance;
-            var items = (comp && comp.items) || activity.items;
+    function start() {
+        // 1. ПЕРЕХВАТ КОМПОНЕНТА (на уровне конструктора)
+        var originalTorrent = Lampa.Component.get('torrent');
 
-            if (items && Array.isArray(items)) {
-                console.log('[SmartSort] Executing sorting logic...');
-                items.sort(function (a, b) {
-                    var vA = Lampa.Arrays.isViewed(a) ? 1 : 0;
-                    var vB = Lampa.Arrays.isViewed(b) ? 1 : 0;
-                    if (vA !== vB) return vB - vA;
-                    
-                    var sA = parseInt(a.seeders || a.seeds || 0);
-                    var sB = parseInt(b.seeders || b.seeds || 0);
-                    return sB - sA;
-                });
-                
-                // Перерисовываем UI
-                if (comp && comp.render) comp.render();
-                else if (activity.render) activity.render();
-            }
-        }
-    }
+        Lampa.Component.add('torrent', function (object) {
+            console.log('[SmartSort] Main Container initialized');
 
-    // 2. ГЛОБАЛЬНЫЙ ПЕРЕХВАТ ШАБЛОНОВ (Внедряем кнопку в UI)
-    var originalGet = Lampa.Template.get;
-    Lampa.Template.get = function (name, vars) {
-        var tpl = originalGet.apply(this, arguments);
-        
-        // Если Lampa пытается отрисовать пункт фильтра
-        if (name === 'filter_item' || name === 'select_item') {
-            // Проверяем, не наш ли это пункт
-            if (vars && vars.base === 'custom_smart') {
-                 tpl.addClass('smart-sort-item').css('color', '#ffeb3b');
-            }
-        }
-        return tpl;
-    };
-
-    // 3. ВНЕДРЕНИЕ В КОМПОНЕНТ ЧЕРЕЗ LISTENER (Каждый раз при открытии торрентов)
-    Lampa.Listener.follow('torrent', function (e) {
-        if (e.type === 'render' || e.type === 'ready') {
-            console.log('[SmartSort] Torrent component detected via Listener');
-            
-            var object = e.object;
+            // Внедряем фильтр в объект, который управляет меню
             if (object && object.filter) {
                 var hasItem = object.filter.find(function(f){ return f.base === 'custom_smart' });
                 if (!hasItem) {
-                    // Вставляем наш метод в начало списка фильтров
-                    object.filter.unshift({
+                    object.filter.push({
                         title: Lampa.Lang.translate('torrent_sort_smart') + ' +',
                         base: 'custom_smart'
                     });
-                    console.log('[SmartSort] Filter pushed into object.filter');
+                    console.log('[SmartSort] Filter added to Main Container');
                 }
             }
-        }
-    });
 
-    // 4. ПЕРЕХВАТ КЛИКА ПО ФИЛЬТРУ
-    // Следим за изменением хранилища
-    setInterval(function(){
-        var current = Lampa.Storage.get('torrent_filter');
-        if (current === 'custom_smart') {
-            var activity = Lampa.Activity.active();
-            if (activity && activity.component === 'torrent' && !activity._smart_applied) {
-                forceSort();
-                activity._smart_applied = true; // Чтобы не зацикливаться
+            var comp = new originalTorrent(object);
+
+            // 2. ПЕРЕХВАТ buildSorted ВНУТРИ ЭКЗЕМПЛЯРА
+            // Этот метод отвечает за пересборку списка перед отрисовкой
+            var originalBuild = comp.buildSorted;
+            comp.buildSorted = function (items) {
+                var currentFilter = Lampa.Storage.get('torrent_filter', 'seeders');
+                
+                if (currentFilter === 'custom_smart') {
+                    var list = items || comp.items || [];
+                    console.log('[SmartSort] Logic applied to ' + list.length + ' items');
+
+                    list.sort(function (a, b) {
+                        var vA = Lampa.Arrays.isViewed(a) ? 1 : 0;
+                        var vB = Lampa.Arrays.isViewed(b) ? 1 : 0;
+                        if (vA !== vB) return vB - vA;
+                        
+                        var sA = parseInt(a.seeders || a.seeds || 0);
+                        var sB = parseInt(b.seeders || b.seeds || 0);
+                        return sB - sA;
+                    });
+
+                    if (comp.render) comp.render();
+                    return; 
+                }
+                return originalBuild.apply(this, arguments);
+            };
+
+            return comp;
+        });
+
+        // 3. ПЕРЕХВАТ SELECT (Для гарантированного появления в меню)
+        var originalSelect = Lampa.Select.show;
+        Lampa.Select.show = function(params) {
+            // Если это меню фильтрации (проверяем по наличию знакомых ключей)
+            if (params.items && params.items.some(function(i){ return i.base === 'seeders'; })) {
+                if (!params.items.find(function(i){ return i.base === 'custom_smart' })) {
+                    params.items.push({
+                        title: Lampa.Lang.translate('torrent_sort_smart') + ' +',
+                        base: 'custom_smart'
+                    });
+                }
+                
+                // Подменяем обработчик выбора
+                var originalOnSelect = params.onSelect;
+                params.onSelect = function(item) {
+                    if (item.base === 'custom_smart') {
+                        Lampa.Storage.set('torrent_filter', 'custom_smart');
+                        // Находим активный компонент и заставляем его пересортировать
+                        var activity = Lampa.Activity.active();
+                        if (activity && activity.instance && activity.instance.buildSorted) {
+                            activity.instance.buildSorted();
+                        }
+                    }
+                    if (originalOnSelect) originalOnSelect(item);
+                };
             }
-        } else {
-            // Сбрасываем флаг, если выбрали другой фильтр
-            var activity = Lampa.Activity.active();
-            if (activity) activity._smart_applied = false;
-        }
-    }, 1000);
+            originalSelect.apply(this, arguments);
+        };
+    }
 
-    // 5. ПОДМЕНА МЕТОДА СОРТИРОВКИ (Для фоновых процессов)
-    var originalSort = Lampa.Arrays.sort;
-    Lampa.Arrays.sort = function(items, method) {
-        if (method === 'custom_smart') {
-            items.sort(function (a, b) {
-                var vA = Lampa.Arrays.isViewed(a) ? 1 : 0;
-                var vB = Lampa.Arrays.isViewed(b) ? 1 : 0;
-                if (vA !== vB) return vB - vA;
-                return parseInt(b.seeders || 0) - parseInt(a.seeders || 0);
-            });
-            return;
-        }
-        return originalSort.apply(this, arguments);
-    };
-
-    console.log('[SmartSort] Deep Intercept Ready. Open Torrents and check Filter menu.');
+    if (window.appready) start();
+    else Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') start(); });
 })();
