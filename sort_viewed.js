@@ -1,47 +1,52 @@
 (function () {
-    window.torrent_sort_viewed = {
-        name: 'Sort Torrents by Viewed',
-        version: '1.0.0',
-        description: 'Сортировка: сначала просмотренные, затем по количеству сидов'
+    // Регистрация метаданных плагина для системы Lampa
+    window.torrent_smart_sort = {
+        name: 'Smart Torrent Sort',
+        version: '1.1.0',
+        description: 'Мгновенная сортировка: сначала просмотренные, затем по сидам'
     };
 
     function start() {
-        // Подписываемся на события компонента торрентов
+        // Подписываемся на основной поток событий торрент-компонента
         Lampa.Listener.follow('torrent', function (e) {
-            // Тип 'complite' или 'received' обычно означает, что список торрентов загружен
-            if (e.type === 'complite' || e.type === 'received') {
+            // 'complite' - это ключевое событие, когда данные получены и готовы к выводу
+            if (e.type === 'complite') {
                 if (e.items && Array.isArray(e.items)) {
-                    sortItems(e.items);
+                    applySmartSort(e.items);
                 }
             }
         });
     }
 
     /**
-     * Логика сортировки
-     * @param {Array} items - массив объектов торрентов
+     * Применяет логику сортировки к массиву объектов
+     * @param {Array} items - оригинальный массив торрентов из события
      */
-    function sortItems(items) {
+    function applySmartSort(items) {
         items.sort(function (a, b) {
-            // 1. Проверяем статус "Просмотрено"
-            // Lampa хранит историю просмотров, функция Arrays.isViewed возвращает true/false
+            // 1. Проверка на статус "Просмотрено"
+            // Lampa сопоставляет торренты по названию/хешу в локальной базе истории
             var viewedA = Lampa.Arrays.isViewed(a) ? 1 : 0;
             var viewedB = Lampa.Arrays.isViewed(b) ? 1 : 0;
 
-            // Сначала просмотренные (1), потом непросмотренные (0)
+            // Сначала просмотренные (значение 1 выше чем 0)
             if (viewedA !== viewedB) {
                 return viewedB - viewedA; 
             }
 
-            // 2. Если статус просмотра одинаковый, сортируем по сидам (по убыванию)
+            // 2. Если оба просмотрены или оба нет — сортируем по сидам
+            // Используем parseInt, так как некоторые парсеры отдают сиды строкой
             var seedsA = parseInt(a.seeders || 0);
             var seedsB = parseInt(b.seeders || 0);
 
+            // По убыванию сидов
             return seedsB - seedsA;
         });
+        
+        // Массив изменен по ссылке, Lampa подхватит изменения автоматически при отрисовке
     }
 
-    // Инициализация плагина после готовности приложения
+    // Ожидаем готовности приложения для запуска
     if (window.appready) {
         start();
     } else {
