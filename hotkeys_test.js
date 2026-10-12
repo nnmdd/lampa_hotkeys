@@ -7,6 +7,7 @@
     Lampa.Platform.tv();
 
     const VIDEO_SIZES = ['default', 'cover', 'fill', 's115', 's130', 'v115', 'v130'];
+    const VIDEO_SPEEDS = ['0.25', '0.50', '0.75', 'default', '1.25', '1.50', '1.75', '2'];
 
     function cycleVideoSize() {
         const sizes = (Lampa.Platform.is('tizen') && Lampa.Storage.field('player') === 'tizen')
@@ -19,6 +20,33 @@
 
         Lampa.PlayerVideo.size(nextSize);
         Lampa.Storage.set('player_size', nextSize);
+
+        const label = Lampa.Lang.translate('player_video_size') + ': ' + Lampa.Lang.translate('player_size_' + nextSize + '_title');
+        Lampa.Noty.show(label, { time: 1500, style: 'glass' });
+    }
+
+    function changeVideoSpeed(step) {
+        const isLimitedPlayer = (Lampa.Platform.is('tizen') && Lampa.Storage.field('player') === 'tizen') ||
+                                (Lampa.Platform.is('orsay') && Lampa.Storage.field('player') === 'orsay');
+
+        const speeds = isLimitedPlayer ? ['default', '2'] : VIDEO_SPEEDS;
+
+        const current = String(Lampa.Storage.get('player_speed', 'default'));
+        let currentIndex = speeds.indexOf(current);
+        if (currentIndex === -1) currentIndex = speeds.indexOf('default');
+
+        const nextIndex = Math.max(0, Math.min(speeds.length - 1, currentIndex + step));
+        const nextSpeed = speeds[nextIndex];
+
+        Lampa.PlayerVideo.speed(nextSpeed);
+        Lampa.Storage.set('player_speed', nextSpeed);
+
+        const speedText = nextSpeed === 'default'
+            ? Lampa.Lang.translate('player_speed_default_title')
+            : nextSpeed + 'x';
+
+        const label = Lampa.Lang.translate('player_video_speed') + ': ' + speedText;
+        Lampa.Noty.show(label, { time: 1500, style: 'glass' });
     }
 
     const KEYS = {
@@ -30,9 +58,17 @@
             codes: [167, 428, 28, 34, 893, 65],
             action: () => Lampa.PlayerPlaylist.prev()
         },
+        speed_down: {
+            codes: [49, 97],
+            action: () => changeVideoSpeed(-1)
+        },
         size: {
             codes: [50, 98],
             action: () => cycleVideoSize()
+        },
+        speed_up: {
+            codes: [51, 99],
+            action: () => changeVideoSpeed(1)
         },
         playlist: {
             codes: [53, 101, 9],
