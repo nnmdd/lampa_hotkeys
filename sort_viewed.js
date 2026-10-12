@@ -1,104 +1,207 @@
 (function () {
-    console.log('[SmartSort] Explorer-mode detected. Injecting...');
+    'use strict';
 
-    Lampa.Lang.add({
-        torrent_sort_smart: {
-            ru: 'Сиды + Просмотренные',
-            en: 'Seeds + Viewed'
-        }
-    });
+    var STORAGE_KEY = 'torrents_viewed_on_top';
 
-    // 1. Функция "умной" сортировки массива
-    function sortItems(items) {
-        if (!items || !Array.isArray(items)) return items;
-        
-        console.log('[SmartSort] Sorting ' + items.length + ' files in Explorer');
-        
-        return items.sort(function (a, b) {
-            // Приоритет 1: Просмотренные
-            var vA = Lampa.Arrays.isViewed(a) ? 1 : 0;
-            var vB = Lampa.Arrays.isViewed(b) ? 1 : 0;
-            if (vA !== vB) return vB - vA;
+    function initPlugin() {
+        if (window.lampa_sort_viewed_plugin) return;
+        window.lampa_sort_viewed_plugin = true;
 
-            // Приоритет 2: Сиды
-            var sA = parseInt(a.seeders || a.seeds || a.seed || 0);
-            var sB = parseInt(b.seeders || b.seeds || b.seed || 0);
-            return sB - sA;
+        Lampa.Lang.add({
+            torrent_viewed_on_top_title: {
+                ru: 'Опции',
+                en: 'Options',
+                uk: 'Опції'
+            },
+            torrent_viewed_on_top: {
+                ru: 'Просмотренные сверху',
+                en: 'Viewed on top',
+                uk: 'Переглянуті зверху'
+            }
         });
-    }
 
-    function start() {
-        // 2. Перехватываем создание компонента (вероятно, это torrents_view или explorer)
-        var targetNames = ['torrents_view', 'torrent', 'explorer'];
-        
-        targetNames.forEach(function(name) {
-            var original = Lampa.Component.get(name);
-            if (!original) return;
+        var activeTorrentsComp = null;
 
-            Lampa.Component.add(name, function (object) {
-                // Внедряем кнопку в настройки фильтра
-                if (object && object.filter) {
-                    var hasItem = object.filter.find(function(f){ return f.base === 'custom_smart' });
-                    if (!hasItem) {
-                        object.filter.push({
-                            title: Lampa.Lang.translate('torrent_sort_smart') + ' +',
-                            base: 'custom_smart'
+        // Проверка, просмотрен ли торрент (по флагу element.viewed и кэшу torrents_view)
+        function isTorrentViewed(item) {
+            if (!item) return false;
+            if (item.viewed) return true;
+
+            var viewedList = Lampa.Storage.cache('torrents_view', 5000, []);
+            var hash = item.hash || (item.Title ? Lampa.Utils.hash(item.Title) : '');
+
+            if (hash && viewedList.indexOf(hash) !== -1) {
+                item.viewed = true;
+                return true;
+            }
+            return false;
+        }
+
+        // 1. Перехватываем Lampa.Parser.get, чтобы получить прямую ссылку на объект results (data.Results)
+        if (Lampa.Parser && typeof Lampa.Parser.get === 'function') {
+            var origParserGet = Lampa.Parser.get;
+
+            Lampa.Parser.get = function (params, oncomplite, onerror) {
+                return origParserGet.call(this, params, function (data) {
+                    if (params && typeof params === 'object') {
+                        params._torrents_results = data;
+                    }
+                    if (oncomplite) oncomplite(data);
+                }, onerror);
+            };
+        }
+
+        // 2. Оборачиваем компонент 'torrents'
+        var origTorrents = Lampa.Component.get('torrents');
+
+        if (origTorrents) {
+            Lampa.Component.add('torrents', function (object) {
+                var comp = new origTorrents(object);
+                activeTorrentsComp = comp;
+
+                var origSortWithPopular = comp.sortWithPopular;
+
+                // Функция поднятия просмотренных торрентов наверх с сохранением текущей сортировки
+                function customSortWithViewed() {
+                    var data = object && object._torrents_results;
+                    if (!data || !Array.isArray(data.Results)) return;
+
+                    var enabled = Lampa.Storage.get(STORAGE_KEY, true);
+
+                    if (!enabled) {
+                        // В старых версиях Lampa при выключенной опции оставляем штатный sortWithPopular
+                        if (typeof origSortWithPopular === 'function') {
+                            origSortWithPopular.apply(comp, arguments);
+                        }
+                        return;
+                    }
+
+                    var viewedItems = [];
+                    var otherItems = [];
+
+                    for (var i = 0; i < data.Results.length; i++) {
+                        var item = data.Results[i];
+                        if (isTorrentViewed(item)) {
+                            viewedItems.push(item);
+                        } else {
+                            otherItems.push(item);
+                        }
+                    }
+
+                    // Если выбрана сортировка "По просмотренным", внутри просмотренных сортируем по сидам
+                    var currentSort = Lampa.Storage.get('torrents_sort', 'popular');
+                    if (currentSort === 'viewed') {
+                        viewedItems.sort(function (a, b) {
+                            return (b.Seeders || 0) - (a.Seeders || 0);
                         });
                     }
+
+                    // В остальных режимах data.Results уже отсортирован по выбранному критерию,
+                    // поэтому viewedItems сохраняет этот порядок и помещается в самое начало списка
+                    data.Results = viewedItems.concat(otherItems);
                 }
 
-                var comp = new original(object);
+                // Переопределяем методы как для новых (sortWithViewed), так и для старых (sortWithPopular) версий Lampa
+                comp.sortWithViewed = customSortWithViewed;
+                comp.sortWithPopular = customSortWithViewed;
 
-                // Перехватываем рендер — самое надежное место в Explorer
-                var originalRender = comp.render;
-                comp.render = function() {
-                    var filter = Lampa.Storage.get('torrent_filter', 'seeders');
-                    if (filter === 'custom_smart' && comp.items) {
-                        sortItems(comp.items);
+                // Поддержка старых версий Lampa, где не было отдельного метода sortResults
+                if (typeof comp.sortResults !== 'function') {
+                    comp.sortResults = function (need) {
+                        var data = object && object._torrents_results;
+                        if (data && Array.isArray(data.Results)) {
+                            var sortKey = need === 'popular' ? 'Seeders' : need;
+                            data.Results.sort(function (c, b) {
+                                if (c[sortKey] < b[sortKey]) return 1;
+                                if (c[sortKey] > b[sortKey]) return -1;
+                                return 0;
+                            });
+                        }
+                        customSortWithViewed();
+                    };
+                }
+
+                // Метод для мгновенной пересортировки и перерисовки списка из меню
+                comp._resortByPlugin = function () {
+                    var currentSort = Lampa.Storage.get('torrents_sort', 'popular');
+                    if (typeof comp.sortResults === 'function') {
+                        comp.sortResults(currentSort);
                     }
-                    return originalRender.apply(this, arguments);
+                    if (typeof comp.applyFilter === 'function') {
+                        comp.applyFilter();
+                    }
+                };
+
+                var origDestroy = comp.destroy;
+                comp.destroy = function () {
+                    if (activeTorrentsComp === comp) {
+                        activeTorrentsComp = null;
+                    }
+                    if (origDestroy) return origDestroy.apply(this, arguments);
                 };
 
                 return comp;
             });
-        });
+        }
 
-        // 3. Перехват всплывающего меню Select (где и живут настройки сортировки)
-        var originalSelect = Lampa.Select.show;
-        Lampa.Select.show = function(params) {
-            // Если в меню есть намеки на файлы или торренты
-            var isTargetMenu = params.items && params.items.some(function(i) {
-                return i.base === 'seeders' || i.base === 'size' || i.base === 'stat';
+        // 3. Добавляем чекбокс включения/выключения в меню сортировки торрентов
+        function injectSortMenuOption(active) {
+            if (!active || !Array.isArray(active.items)) return;
+
+            // Определяем меню сортировки торрентов по наличию стандартных ключей sort
+            var isTorrentSortMenu = active.items.some(function (item) {
+                return item && (item.sort === 'Seeders' || item.sort === 'PublisTime');
             });
 
-            if (isTargetMenu) {
-                console.log('[SmartSort] Explorer filter menu detected');
-                
-                if (!params.items.find(function(i){ return i.base === 'custom_smart' })) {
-                    params.items.push({
-                        title: Lampa.Lang.translate('torrent_sort_smart') + ' +',
-                        base: 'custom_smart'
-                    });
-                }
+            if (!isTorrentSortMenu) return;
 
-                var originalOnSelect = params.onSelect;
-                params.onSelect = function(item) {
-                    if (item.base === 'custom_smart') {
-                        Lampa.Storage.set('torrent_filter', 'custom_smart');
-                        // Сразу после выбора командуем активному компоненту перерисоваться
-                        var activity = Lampa.Activity.active();
-                        if (activity && activity.instance) {
-                            if (activity.instance.items) sortItems(activity.instance.items);
-                            if (activity.instance.render) activity.instance.render();
+            var existingToggle = active.items.find(function (item) {
+                return item && item.viewed_top_toggle;
+            });
+
+            if (!existingToggle) {
+                active.items.push({
+                    title: Lampa.Lang.translate('torrent_viewed_on_top_title'),
+                    separator: true,
+                    viewed_top_separator: true
+                });
+
+                active.items.push({
+                    title: Lampa.Lang.translate('torrent_viewed_on_top'),
+                    checkbox: true,
+                    checked: Lampa.Storage.get(STORAGE_KEY, true),
+                    noselect: true,
+                    viewed_top_toggle: true,
+                    onCheck: function (item) {
+                        Lampa.Storage.set(STORAGE_KEY, Boolean(item.checked));
+                        if (activeTorrentsComp && typeof activeTorrentsComp._resortByPlugin === 'function') {
+                            activeTorrentsComp._resortByPlugin();
                         }
                     }
-                    if (originalOnSelect) originalOnSelect(item);
-                };
+                });
+            } else {
+                existingToggle.checked = Lampa.Storage.get(STORAGE_KEY, true);
             }
-            originalSelect.apply(this, arguments);
-        };
+        }
+
+        if (Lampa.Select && Lampa.Select.listener) {
+            Lampa.Select.listener.follow('preshow', function (e) {
+                injectSortMenuOption(e.active);
+            });
+        } else if (Lampa.Select && typeof Lampa.Select.show === 'function') {
+            var origSelectShow = Lampa.Select.show;
+            Lampa.Select.show = function (params) {
+                injectSortMenuOption(params);
+                return origSelectShow.apply(this, arguments);
+            };
+        }
     }
 
-    if (window.appready) start();
-    else Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') start(); });
+    if (window.appready) {
+        initPlugin();
+    } else {
+        Lampa.Listener.follow('app', function (e) {
+            if (e.type === 'ready') initPlugin();
+        });
+    }
 })();
