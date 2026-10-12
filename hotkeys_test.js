@@ -1,159 +1,101 @@
 (function () {
-Lampa.Platform.tv();
+    'use strict';
 
-const KEYS = {
-    next: {
-        codes: [166, 427, 27, 33, 892, 68],
-        action: () => Lampa.PlayerPlaylist.next()
-    },
-    prev: {
-        codes: [167, 428, 28, 34, 893, 65],
-        action: () => Lampa.PlayerPlaylist.prev()
-    },
-    playlist: {
-        codes: [53, 101, 9],
-        action: () => Lampa.PlayerPlaylist.show()
-    },
-    subs: {
-        codes: [48, 96, 17],
-        action: () => Lampa.PlayerPanel.render().find('.player-panel__subs').trigger('hover:enter')
-    },
-    tracks: {
-        codes: [56, 104],
-        action: () => Lampa.PlayerPanel.render().find('.player-panel__tracks').trigger('hover:enter')
+    if (window.lampa_hotkeys_loaded) return;
+    window.lampa_hotkeys_loaded = true;
+
+    Lampa.Platform.tv();
+
+    const VIDEO_SIZES = ['default', 'cover', 'fill', 's115', 's130', 'v115', 'v130'];
+
+    function cycleVideoSize() {
+        const sizes = (Lampa.Platform.is('tizen') && Lampa.Storage.field('player') === 'tizen')
+            ? ['default', 'cover']
+            : VIDEO_SIZES;
+
+        const current = Lampa.Storage.get('player_size', 'default');
+        const nextIndex = (sizes.indexOf(current) + 1) % sizes.length;
+        const nextSize = sizes[nextIndex];
+
+        Lampa.PlayerVideo.size(nextSize);
+        Lampa.Storage.set('player_size', nextSize);
     }
-};
 
-const CLOSE_KEYS = [
-    ...KEYS.subs.codes,
-    ...KEYS.playlist.codes,
-    ...KEYS.tracks.codes
-];
-
-function log(...args) {
-    console.log('Hotkeys', ...args);
-}
-
-function listenHotkeys(e) {
-    const keyCode = e.keyCode;
-
-    if (Lampa.Select.opened()) {
-        if (CLOSE_KEYS.includes(keyCode)) {
-            Lampa.Select.close();
-            e.preventDefault();
-            e.stopPropagation();
+    const KEYS = {
+        next: {
+            codes: [166, 427, 27, 33, 892, 68],
+            action: () => Lampa.PlayerPlaylist.next()
+        },
+        prev: {
+            codes: [167, 428, 28, 34, 893, 65],
+            action: () => Lampa.PlayerPlaylist.prev()
+        },
+        size: {
+            codes: [50, 98],
+            action: () => cycleVideoSize()
+        },
+        playlist: {
+            codes: [53, 101, 9],
+            action: () => Lampa.PlayerPlaylist.show()
+        },
+        subs: {
+            codes: [48, 96, 17],
+            action: () => Lampa.PlayerPanel.render().find('.player-panel__subs').trigger('hover:enter')
+        },
+        tracks: {
+            codes: [56, 104],
+            action: () => Lampa.PlayerPanel.render().find('.player-panel__tracks').trigger('hover:enter')
         }
-        return;
+    };
+
+    const CLOSE_KEYS = [
+        ...KEYS.subs.codes,
+        ...KEYS.playlist.codes,
+        ...KEYS.tracks.codes
+    ];
+
+    function log(...args) {
+        console.log('Hotkeys', ...args);
     }
 
-    for (const item of Object.values(KEYS)) {
-        if (item.codes.includes(keyCode)) {
-            item.action();
-            e.preventDefault();
-            e.stopPropagation();
+    function listenHotkeys(e) {
+        if (e.repeat) return;
+
+        const keyCode = e.keyCode;
+
+        if (Lampa.Select.opened()) {
+            if (CLOSE_KEYS.includes(keyCode)) {
+                Lampa.Select.close();
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }
             return;
         }
-    }
-}
 
-function listenDestroy() {
-    document.removeEventListener('keydown', listenHotkeys);
-    Lampa.Player.listener.remove('destroy', listenDestroy);
-}
-
-function startHotkeys() {
-    document.addEventListener('keydown', listenHotkeys);
-    Lampa.Player.listener.follow('destroy', listenDestroy);
-    log('Hotkeys 1.9 listener started');
-}
-
-Lampa.Player.listener.follow('ready', startHotkeys);
-})();(function () {
-Lampa.Platform.tv();
-const KEYS = {
-    next: {
-        codes: [166, 427, 27, 33, 892, 68], 
-        selector: '.player-panel__next.button.selector',
-        handler: () => Lampa.PlayerPlaylist && Lampa.PlayerPlaylist.next()
-    },
-    prev: {
-        codes: [167, 428, 28, 34, 893, 65], 
-        selector: '.player-panel__prev.button.selector',
-        handler: () => Lampa.PlayerPlaylist && Lampa.PlayerPlaylist.prev()
-    },
-    subs: {
-        codes: [48, 96, 17], 
-        selector: '.player-panel__subs.button.selector'
-    },
-    playlist: {
-        codes: [53, 101, 9], 
-        selector: '.player-panel__playlist.button.selector'
-    },
-    tracks: {
-        codes: [56, 104], 
-        selector: '.player-panel__tracks.button.selector'
-    }
-};
-
-const CLOSE_KEYS = [
-    ...KEYS.subs.codes, 
-    ...KEYS.playlist.codes, 
-    ...KEYS.tracks.codes
-];
-
-function log(...args) {
-    console.log('Hotkeys', ...args);
-}
-
-function listenHotkeys(e) {
-    const keyCode = e.keyCode;
-    if (document.querySelector('body.selectbox--open')) {
-        if (CLOSE_KEYS.includes(keyCode)) {
-            history.back();
-            e.preventDefault(); 
-            e.stopPropagation();
-            return;
-        }
-        return;
-    }
-    for (const action of Object.values(KEYS)) {
-        if (action.codes.includes(keyCode)) {
-            openPanel(action);
-            e.preventDefault();
-            e.stopPropagation();
-            return;
+        for (const item of Object.values(KEYS)) {
+            if (item.codes.includes(keyCode)) {
+                item.action();
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                return;
+            }
         }
     }
-}
 
-function openPanel(action) {
-    const el = document.querySelector(action.selector);
-    if (!el) {
-        if (action.handler) {
-            action.handler();
-        } else {
-            log('Error', `Element not found: ${action.selector}`);
-        }
-        return;
+    function listenDestroy() {
+        document.removeEventListener('keydown', listenHotkeys);
+        Lampa.Player.listener.remove('destroy', listenDestroy);
     }
-    
-    if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
-        Lampa.Utils.trigger(el, "hover:enter");
-    } else {
-        el.click();
+
+    function startHotkeys() {
+        document.removeEventListener('keydown', listenHotkeys);
+        document.addEventListener('keydown', listenHotkeys);
+        Lampa.Player.listener.remove('destroy', listenDestroy);
+        Lampa.Player.listener.follow('destroy', listenDestroy);
+        log('Hotkeys 1.9 listener started');
     }
-}
 
-function listenDestroy() {
-    document.removeEventListener("keydown", listenHotkeys);
-    Lampa.Player.listener.remove('destroy', listenDestroy);    
-}
-
-function startHotkeys() {
-    document.addEventListener("keydown", listenHotkeys);
-    Lampa.Player.listener.follow('destroy', listenDestroy);
-    log('Hotkeys 1.8 listener started');
-}
-
-Lampa.Player.listener.follow('ready', startHotkeys);
+    Lampa.Player.listener.follow('ready', startHotkeys);
 })();
