@@ -1,68 +1,89 @@
+(function () {
 Lampa.Platform.tv();
-function log() {
-        console.log.apply(console.log, arguments);
-      }
-log('Hotkeys', 'Hotkeys 172 loaded');
-
-function openPanel(element) {
-	if ('parseFloat(Lampa.Manifest.app_version)' >= '1.7') {
-        //log('Hotkeys', '1.7.0');
-		Lampa.Utils.trigger(document.querySelector(element), 'click');
-	} else {
-        //log('Hotkeys', 'old version');
-		document.querySelector(element).click();
-	}
+const KEYS = {
+    next: {
+        codes: [166, 427, 27, 33, 892, 68], 
+        selector: '.player-panel__next.button.selector',
+        handler: () => Lampa.PlayerPlaylist && Lampa.PlayerPlaylist.next()
+    },
+    prev: {
+        codes: [167, 428, 28, 34, 893, 65], 
+        selector: '.player-panel__prev.button.selector',
+        handler: () => Lampa.PlayerPlaylist && Lampa.PlayerPlaylist.prev()
+    },
+    subs: {
+        codes: [48, 96, 17], 
+        selector: '.player-panel__subs.button.selector'
+    },
+    playlist: {
+        codes: [53, 101, 9], 
+        selector: '.player-panel__playlist.button.selector'
+    },
+    tracks: {
+        codes: [56, 104], 
+        selector: '.player-panel__tracks.button.selector'
+    }
 };
 
-function listenDestroy() {
-	document.removeEventListener("keydown", listenHotkeys);
-	Lampa.Player.listener.remove('destroy', listenDestroy);	
-};
+const CLOSE_KEYS = [
+    ...KEYS.subs.codes, 
+    ...KEYS.playlist.codes, 
+    ...KEYS.tracks.codes
+];
 
-function startHotkeys() {
-	document.addEventListener("keydown", listenHotkeys);
-	Lampa.Player.listener.follow('destroy', listenDestroy);
-};
+function log(...args) {
+    console.log('Hotkeys', ...args);
+}
 
 function listenHotkeys(e) {
-
-log('Hotkeys', e.keyCode);
-	
-  if (e.keyCode === 166 || e.keyCode === 427 || e.keyCode === 27 || e.keyCode === 33) {
-	openPanel('.player-panel__next.button.selector');
-  }
-
-  if (e.keyCode === 167 || e.keyCode === 428 || e.keyCode === 28 || e.keyCode === 34) {
-	openPanel('.player-panel__prev.button.selector');
-  }
-	
-  if (e.keyCode === 48 || e.keyCode === 96) {
-    //log('Hotkeys', '0 pressed');
-    if (!document.querySelector('body.selectbox--open')) {
-	//log('Hotkeys', 'subs list not visible');
-	openPanel('.player-panel__subs.button.selector');
-    } else {
-      	history.back();
+    const keyCode = e.keyCode;
+    if (document.querySelector('body.selectbox--open')) {
+        if (CLOSE_KEYS.includes(keyCode)) {
+            history.back();
+            e.preventDefault(); 
+            e.stopPropagation();
+            return;
+        }
+        return;
     }
-  }
-  if (e.keyCode === 53 || e.keyCode === 101) {
-    //log('Hotkeys', '5 pressed');
-    if (!document.querySelector('body.selectbox--open')) {
-	//log('Hotkeys', 'playlist not visible');
-      	openPanel('.player-panel__playlist.button.selector');
-    } else {
-      	history.back();
+    for (const action of Object.values(KEYS)) {
+        if (action.codes.includes(keyCode)) {
+            openPanel(action);
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
     }
-  }
-  if (e.keyCode === 56 || e.keyCode === 104) {
-    //log('Hotkeys', '8 pressed');
-    if (!document.querySelector('body.selectbox--open')) {
-	//log('Hotkeys', 'audio list not visible');
-      	openPanel('.player-panel__tracks.button.selector');
-    } else {
-      	history.back();
-    }
-  }
-};
+}
 
-Lampa.Player.listener.follow('ready',startHotkeys);
+function openPanel(action) {
+    const el = document.querySelector(action.selector);
+    if (!el) {
+        if (action.handler) {
+            action.handler();
+        } else {
+            log('Error', `Element not found: ${action.selector}`);
+        }
+        return;
+    }
+    
+    if (parseFloat(Lampa.Manifest.app_version) >= 1.7) {
+        Lampa.Utils.trigger(el, "hover:enter");
+    } else {
+        el.click();
+    }
+}
+
+function listenDestroy() {
+    document.removeEventListener("keydown", listenHotkeys);
+    Lampa.Player.listener.remove('destroy', listenDestroy);    
+}
+
+function startHotkeys() {
+    document.addEventListener("keydown", listenHotkeys);
+    Lampa.Player.listener.follow('destroy', listenDestroy);
+    log('Hotkeys 1.8 listener started');
+}
+
+Lampa.Player.listener.follow('ready', startHotkeys);
+})();
