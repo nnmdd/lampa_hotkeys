@@ -6,11 +6,32 @@
 
     Lampa.Platform.tv();
 
+    if (!document.getElementById('lampa-hotkeys-noty-style')) {
+        const style = document.createElement('style');
+        style.id = 'lampa-hotkeys-noty-style';
+        style.textContent = `
+            .noty.noty--style--transparent {
+                background: transparent !important;
+                backdrop-filter: none !important;
+                color: #fff !important;
+                pointer-events: none;
+            }
+            .noty.noty--style--transparent .noty__text {
+                display: inline-block;
+                background: rgba(0, 0, 0, 0.45);
+                padding: 0.4em 1.2em;
+                border-radius: 0.5em;
+                text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     const VIDEO_SIZES = ['default', 'cover', 'fill', 's115', 's130', 'v115', 'v130'];
     const VIDEO_SPEEDS = ['0.25', '0.50', '0.75', 'default', '1.25', '1.50', '1.75', '2'];
 
     function showToast(text) {
-        Lampa.Noty.show(text, { time: 1500, style: 'glass' });
+        Lampa.Noty.show(text, { time: 1500, style: 'transparent' });
     }
 
     function cycleVideoSize() {
