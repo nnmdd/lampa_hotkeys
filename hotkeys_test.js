@@ -1,5 +1,75 @@
 (function () {
 Lampa.Platform.tv();
+
+const KEYS = {
+    next: {
+        codes: [166, 427, 27, 33, 892, 68],
+        action: () => Lampa.PlayerPlaylist.next()
+    },
+    prev: {
+        codes: [167, 428, 28, 34, 893, 65],
+        action: () => Lampa.PlayerPlaylist.prev()
+    },
+    playlist: {
+        codes: [53, 101, 9],
+        action: () => Lampa.PlayerPlaylist.show()
+    },
+    subs: {
+        codes: [48, 96, 17],
+        action: () => Lampa.PlayerPanel.render().find('.player-panel__subs').trigger('hover:enter')
+    },
+    tracks: {
+        codes: [56, 104],
+        action: () => Lampa.PlayerPanel.render().find('.player-panel__tracks').trigger('hover:enter')
+    }
+};
+
+const CLOSE_KEYS = [
+    ...KEYS.subs.codes,
+    ...KEYS.playlist.codes,
+    ...KEYS.tracks.codes
+];
+
+function log(...args) {
+    console.log('Hotkeys', ...args);
+}
+
+function listenHotkeys(e) {
+    const keyCode = e.keyCode;
+
+    if (Lampa.Select.opened()) {
+        if (CLOSE_KEYS.includes(keyCode)) {
+            Lampa.Select.close();
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        return;
+    }
+
+    for (const item of Object.values(KEYS)) {
+        if (item.codes.includes(keyCode)) {
+            item.action();
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+    }
+}
+
+function listenDestroy() {
+    document.removeEventListener('keydown', listenHotkeys);
+    Lampa.Player.listener.remove('destroy', listenDestroy);
+}
+
+function startHotkeys() {
+    document.addEventListener('keydown', listenHotkeys);
+    Lampa.Player.listener.follow('destroy', listenDestroy);
+    log('Hotkeys 1.9 listener started');
+}
+
+Lampa.Player.listener.follow('ready', startHotkeys);
+})();(function () {
+Lampa.Platform.tv();
 const KEYS = {
     next: {
         codes: [166, 427, 27, 33, 892, 68], 
