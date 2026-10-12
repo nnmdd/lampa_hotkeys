@@ -3,6 +3,20 @@
 
     var STORAGE_KEY = 'torrents_viewed_on_top';
 
+    function isViewedOnTopEnabled() {
+        var raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw === null || raw === undefined || raw === '') return true;
+        return raw === 'true';
+    }
+
+    function setViewedOnTopEnabled(enabled) {
+        var val = enabled ? 'true' : 'false';
+        window.localStorage.setItem(STORAGE_KEY, val);
+        if (window.Lampa && Lampa.Storage) {
+            Lampa.Storage.set(STORAGE_KEY, val);
+        }
+    }
+
     function initPlugin() {
         if (window.lampa_sort_viewed_plugin) return;
         window.lampa_sort_viewed_plugin = true;
@@ -22,7 +36,6 @@
 
         var activeTorrentsComp = null;
 
-        // Проверка, просмотрен ли торрент (по флагу element.viewed и кэшу torrents_view)
         function isTorrentViewed(item) {
             if (!item) return false;
             if (item.viewed) return true;
@@ -37,7 +50,7 @@
             return false;
         }
 
-        // 1. Перехватываем Lampa.Parser.get, чтобы получить прямую ссылку на объект results (data.Results)
+        // 1. Перехватываем Lampa.Parser.get, чтобы получить ссылку на объект results (data.Results)
         if (Lampa.Parser && typeof Lampa.Parser.get === 'function') {
             var origParserGet = Lampa.Parser.get;
 
@@ -61,15 +74,11 @@
 
                 var origSortWithPopular = comp.sortWithPopular;
 
-                // Функция поднятия просмотренных торрентов наверх с сохранением текущей сортировки
                 function customSortWithViewed() {
                     var data = object && object._torrents_results;
                     if (!data || !Array.isArray(data.Results)) return;
 
-                    var enabled = Lampa.Storage.get(STORAGE_KEY, true);
-
-                    if (!enabled) {
-                        // В старых версиях Lampa при выключенной опции оставляем штатный sortWithPopular
+                    if (!isViewedOnTopEnabled()) {
                         if (typeof origSortWithPopular === 'function') {
                             origSortWithPopular.apply(comp, arguments);
                         }
@@ -88,7 +97,6 @@
                         }
                     }
 
-                    // Если выбрана сортировка "По просмотренным", внутри просмотренных сортируем по сидам
                     var currentSort = Lampa.Storage.get('torrents_sort', 'popular');
                     if (currentSort === 'viewed') {
                         viewedItems.sort(function (a, b) {
@@ -96,16 +104,14 @@
                         });
                     }
 
-                    // В остальных режимах data.Results уже отсортирован по выбранному критерию,
-                    // поэтому viewedItems сохраняет этот порядок и помещается в самое начало списка
-                    data.Results = viewedItems.concat(otherItems);
+                    var combined = viewedItems.concat(otherItems);
+                    data.Results.length = 0;
+                    Array.prototype.push.apply(data.Results, combined);
                 }
 
-                // Переопределяем методы как для новых (sortWithViewed), так и для старых (sortWithPopular) версий Lampa
                 comp.sortWithViewed = customSortWithViewed;
                 comp.sortWithPopular = customSortWithViewed;
 
-                // Поддержка старых версий Lampa, где не было отдельного метода sortResults
                 if (typeof comp.sortResults !== 'function') {
                     comp.sortResults = function (need) {
                         var data = object && object._torrents_results;
@@ -121,9 +127,8 @@
                     };
                 }
 
-                // Метод для мгновенной пересортировки и перерисовки списка из меню
-                comp._resortByPlugin = function () {
-                    var currentSort = Lampa.Storage.get('torrents_sort', 'popular');
+                comp._resortByPlugin = function (activeSortKey) {
+                    var currentSort = activeSortKey || Lampa.Storage.get('torrents_sort', 'popular');
                     if (typeof comp.sortResults === 'function') {
                         comp.sortResults(currentSort);
                     }
@@ -144,11 +149,10 @@
             });
         }
 
-        // 3. Добавляем чекбокс включения/выключения в меню сортировки торрентов
+        // 3. Добавляем чекбокс в меню сортировки торрентов
         function injectSortMenuOption(active) {
             if (!active || !Array.isArray(active.items)) return;
 
-            // Определяем меню сортировки торрентов по наличию стандартных ключей sort
             var isTorrentSortMenu = active.items.some(function (item) {
                 return item && (item.sort === 'Seeders' || item.sort === 'PublisTime');
             });
@@ -169,24 +173,30 @@
                 active.items.push({
                     title: Lampa.Lang.translate('torrent_viewed_on_top'),
                     checkbox: true,
-                    checked: Lampa.Storage.get(STORAGE_KEY, true),
+                    checked: isViewedOnTopEnabled(),
                     noselect: true,
                     viewed_top_toggle: true,
                     onCheck: function (item) {
-                        Lampa.Storage.set(STORAGE_KEY, Boolean(item.checked));
+                        setViewedOnTopEnabled(Boolean(item.checked));
+
+                        var selectedSortItem = active.items.find(function (i) {
+                            return i && i.sort && i.selected;
+                        });
+                        var sortKey = selectedSortItem ? selectedSortItem.sort : Lampa.Storage.get('torrents_sort', 'popular');
+
                         if (activeTorrentsComp && typeof activeTorrentsComp._resortByPlugin === 'function') {
-                            activeTorrentsComp._resortByPlugin();
+                            activeTorrentsComp._resortByPlugin(sortKey);
                         }
                     }
                 });
             } else {
-                existingToggle.checked = Lampa.Storage.get(STORAGE_KEY, true);
+                existingToggle.checked = isViewedOnTopEnabled();
             }
         }
 
         if (Lampa.Select && Lampa.Select.listener) {
             Lampa.Select.listener.follow('preshow', function (e) {
-                injectSortMenuOption(e.active);
+                if (e && e.active) injectSortMenuOption(e.active);
             });
         } else if (Lampa.Select && typeof Lampa.Select.show === 'function') {
             var origSelectShow = Lampa.Select.show;
