@@ -6,154 +6,261 @@
 
     Lampa.Platform.tv();
 
+    // Инжект стилей для прозрачных тостов и мини-бейджей на иконках нижней панели
     if (!document.getElementById('lampa-hotkeys-noty-style')) {
-        const style = document.createElement('style');
+        var style = document.createElement('style');
         style.id = 'lampa-hotkeys-noty-style';
-        style.textContent = `
-            .noty.noty--style--transparent {
-                background: transparent !important;
-                backdrop-filter: none !important;
-                color: #fff !important;
-                pointer-events: none;
-            }
-            .noty.noty--style--transparent .noty__text {
-                display: inline-block;
-                background: rgba(0, 0, 0, 0.45);
-                padding: 0.4em 1.2em;
-                border-radius: 0.5em;
-                text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
-            }
-        `;
+        style.textContent =
+            '.noty.noty--style--transparent {' +
+                'background: transparent !important;' +
+                'backdrop-filter: none !important;' +
+                'color: #fff !important;' +
+                'pointer-events: none;' +
+            '}' +
+            '.noty.noty--style--transparent .noty__text {' +
+                'display: inline-block;' +
+                'background: rgba(0, 0, 0, 0.45);' +
+                'padding: 0.4em 1.2em;' +
+                'border-radius: 0.5em;' +
+                'text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);' +
+            '}' +
+            '.player-panel__size,' +
+            '.player-panel__speed {' +
+                'position: relative;' +
+            '}' +
+            '.hotkey-panel-badge {' +
+                'position: absolute;' +
+                'bottom: -0.35em;' +
+                'right: -0.35em;' +
+                'background: #fff;' +
+                'color: #000;' +
+                'font-size: 0.55em;' +
+                'font-weight: 700;' +
+                'padding: 0.1em 0.35em;' +
+                'border-radius: 0.3em;' +
+                'line-height: 1.1;' +
+                'pointer-events: none;' +
+                'white-space: nowrap;' +
+                'box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);' +
+                'z-index: 2;' +
+            '}';
         document.head.appendChild(style);
     }
 
-    const VIDEO_SIZES = ['default', 'cover', 'fill', 's115', 's130', 'v115', 'v130'];
-    const VIDEO_SPEEDS = ['0.25', '0.50', '0.75', 'default', '1.25', '1.50', '1.75', '2'];
+    var VIDEO_SIZES = ['default', 'cover', 'fill', 's115', 's130', 'v115', 'v130'];
+    var VIDEO_SPEEDS = ['0.25', '0.50', '0.75', 'default', '1.25', '1.50', '1.75', '2'];
 
     function showToast(text) {
         Lampa.Noty.show(text, { time: 1500, style: 'transparent' });
     }
 
+    function stopEvent(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+    }
+
+    function triggerPanelButton(selector) {
+        var panel = Lampa.PlayerPanel.render();
+        if (panel) {
+            panel.find(selector).trigger('hover:enter');
+        }
+    }
+
+    function updatePanelBadge(buttonSelector, text, isDefault) {
+        var panel = Lampa.PlayerPanel.render();
+        if (!panel) return;
+
+        var btn = panel.find(buttonSelector);
+        if (!btn.length) return;
+
+        var badge = btn.find('.hotkey-panel-badge');
+
+        if (isDefault) {
+            if (badge.length) badge.remove();
+            return;
+        }
+
+        if (!badge.length) {
+            badge = $('<div class="hotkey-panel-badge"></div>');
+            btn.append(badge);
+        }
+
+        badge.text(text);
+    }
+
+    function onPanelSizeChange(e) {
+        if (!e || !e.size) return;
+        updatePanelBadge('.player-panel__size', String(e.size).toUpperCase(), e.size === 'default');
+    }
+
+    function onPanelSpeedChange(e) {
+        if (!e || !e.speed) return;
+        var badgeText = e.speed === 'default' ? '1x' : e.speed + 'x';
+        updatePanelBadge('.player-panel__speed', badgeText, e.speed === 'default');
+    }
+
     function cycleVideoSize() {
-        const sizes = (Lampa.Platform.is('tizen') && Lampa.Storage.field('player') === 'tizen')
-            ? ['default', 'cover']
-            : VIDEO_SIZES;
+        var isTizenPlayer = Lampa.Platform.is('tizen') && Lampa.Storage.field('player') === 'tizen';
+        var sizes = isTizenPlayer ? ['default', 'cover'] : VIDEO_SIZES;
 
-        const current = Lampa.Storage.get('player_size', 'default');
-        const nextIndex = (sizes.indexOf(current) + 1) % sizes.length;
-        const nextSize = sizes[nextIndex];
+        var current = Lampa.Storage.get('player_size', 'default');
+        var currentIndex = sizes.indexOf(current);
+        var nextIndex = (currentIndex + 1) % sizes.length;
+        var nextSize = sizes[nextIndex];
 
-        Lampa.PlayerVideo.size(nextSize);
         Lampa.Storage.set('player_size', nextSize);
+        Lampa.PlayerVideo.size(nextSize);
 
-        showToast(Lampa.Lang.translate('player_video_size') + ': ' + Lampa.Lang.translate('player_size_' + nextSize + '_title'));
+        if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
+            Lampa.PlayerPanel.listener.send('size', { size: nextSize });
+        }
+
+        updatePanelBadge('.player-panel__size', nextSize.toUpperCase(), nextSize === 'default');
+
+        showToast(
+            Lampa.Lang.translate('player_video_size') + ': ' +
+            Lampa.Lang.translate('player_size_' + nextSize + '_title')
+        );
     }
 
     function changeVideoSpeed(step) {
-        const isLimitedPlayer = (Lampa.Platform.is('tizen') && Lampa.Storage.field('player') === 'tizen') ||
-                                (Lampa.Platform.is('orsay') && Lampa.Storage.field('player') === 'orsay');
+        var playerType = Lampa.Storage.field('player');
+        var isLimitedPlayer = (Lampa.Platform.is('tizen') && playerType === 'tizen') ||
+                              (Lampa.Platform.is('orsay') && playerType === 'orsay');
 
-        const speeds = isLimitedPlayer ? ['default', '2'] : VIDEO_SPEEDS;
+        var speeds = isLimitedPlayer ? ['default', '2'] : VIDEO_SPEEDS;
 
-        const current = String(Lampa.Storage.get('player_speed', 'default'));
-        let currentIndex = speeds.indexOf(current);
+        var current = String(Lampa.Storage.get('player_speed', 'default'));
+        var currentIndex = speeds.indexOf(current);
         if (currentIndex === -1) currentIndex = speeds.indexOf('default');
 
-        const nextIndex = Math.max(0, Math.min(speeds.length - 1, currentIndex + step));
-        const nextSpeed = speeds[nextIndex];
+        var nextIndex = Math.max(0, Math.min(speeds.length - 1, currentIndex + step));
+        var nextSpeed = speeds[nextIndex];
 
-        Lampa.PlayerVideo.speed(nextSpeed);
-        Lampa.Storage.set('player_speed', nextSpeed);
+        if (nextSpeed !== current) {
+            Lampa.Storage.set('player_speed', nextSpeed);
+            Lampa.PlayerVideo.speed(nextSpeed);
 
-        const speedText = nextSpeed === 'default'
+            if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
+                Lampa.PlayerPanel.listener.send('speed', { speed: nextSpeed });
+            }
+
+            var badgeText = nextSpeed === 'default' ? '1x' : nextSpeed + 'x';
+            updatePanelBadge('.player-panel__speed', badgeText, nextSpeed === 'default');
+        }
+
+        var speedText = nextSpeed === 'default'
             ? Lampa.Lang.translate('player_speed_default_title')
             : nextSpeed + 'x';
 
         showToast(Lampa.Lang.translate('player_video_speed') + ': ' + speedText);
     }
 
-    const KEYS = {
-        next: {
-            codes: [166, 427, 27, 33, 892, 68],
-            action: () => Lampa.PlayerPlaylist.next()
+    // Описание привязок (код 27 исключен из next, чтобы не блокировать штатный Back/Esc)
+    var ACTIONS = [
+        {
+            codes: [166, 427, 33, 892, 68],
+            action: function () { Lampa.PlayerPlaylist.next(); }
         },
-        prev: {
+        {
             codes: [167, 428, 28, 34, 893, 65],
-            action: () => Lampa.PlayerPlaylist.prev()
+            action: function () { Lampa.PlayerPlaylist.prev(); }
         },
-        speed_down: {
+        {
             codes: [49, 97],
-            action: () => changeVideoSpeed(-1)
+            action: function () { changeVideoSpeed(-1); }
         },
-        size: {
+        {
             codes: [50, 98],
-            action: () => cycleVideoSize()
+            action: function () { cycleVideoSize(); }
         },
-        speed_up: {
+        {
             codes: [51, 99],
-            action: () => changeVideoSpeed(1)
+            action: function () { changeVideoSpeed(1); }
         },
-        playlist: {
+        {
             codes: [53, 101, 9],
-            action: () => Lampa.PlayerPlaylist.show()
+            closeSelect: true,
+            action: function () { Lampa.PlayerPlaylist.show(); }
         },
-        subs: {
+        {
             codes: [48, 96, 17],
-            action: () => Lampa.PlayerPanel.render().find('.player-panel__subs').trigger('hover:enter')
+            closeSelect: true,
+            action: function () { triggerPanelButton('.player-panel__subs'); }
         },
-        tracks: {
+        {
             codes: [56, 104],
-            action: () => Lampa.PlayerPanel.render().find('.player-panel__tracks').trigger('hover:enter')
+            closeSelect: true,
+            action: function () { triggerPanelButton('.player-panel__tracks'); }
         }
-    };
-
-    const CLOSE_KEYS = [
-        ...KEYS.subs.codes,
-        ...KEYS.playlist.codes,
-        ...KEYS.tracks.codes
     ];
 
-    function log(...args) {
-        console.log('Hotkeys', ...args);
+    // Предкомпиляция хеш-таблиц для O(1) поиска без циклов при каждом keydown
+    var KEY_MAP = {};
+    var CLOSE_MAP = {};
+
+    for (var i = 0; i < ACTIONS.length; i++) {
+        var item = ACTIONS[i];
+        for (var j = 0; j < item.codes.length; j++) {
+            var code = item.codes[j];
+            KEY_MAP[code] = item.action;
+            if (item.closeSelect) {
+                CLOSE_MAP[code] = true;
+            }
+        }
     }
 
     function listenHotkeys(e) {
         if (e.repeat) return;
 
-        const keyCode = e.keyCode;
+        var keyCode = e.keyCode;
 
         if (Lampa.Select.opened()) {
-            if (CLOSE_KEYS.includes(keyCode)) {
+            if (CLOSE_MAP[keyCode]) {
                 Lampa.Select.close();
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
+                stopEvent(e);
             }
             return;
         }
 
-        for (const item of Object.values(KEYS)) {
-            if (item.codes.includes(keyCode)) {
-                item.action();
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                return;
-            }
+        var handler = KEY_MAP[keyCode];
+        if (handler) {
+            handler();
+            stopEvent(e);
         }
     }
 
     function listenDestroy() {
-        document.removeEventListener('keydown', listenHotkeys);
+        document.removeEventListener('keydown', listenHotkeys, true);
+        if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
+            Lampa.PlayerPanel.listener.remove('size', onPanelSizeChange);
+            Lampa.PlayerPanel.listener.remove('speed', onPanelSpeedChange);
+        }
         Lampa.Player.listener.remove('destroy', listenDestroy);
+        Lampa.Storage.set('player_speed', 'default', true);
     }
 
     function startHotkeys() {
-        document.removeEventListener('keydown', listenHotkeys);
-        document.addEventListener('keydown', listenHotkeys);
+        Lampa.Storage.set('player_speed', 'default', true);
+
+        var savedSize = Lampa.Storage.get('player_size', 'default');
+        updatePanelBadge('.player-panel__size', String(savedSize).toUpperCase(), savedSize === 'default');
+        updatePanelBadge('.player-panel__speed', '1x', true);
+
+        if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
+            Lampa.PlayerPanel.listener.remove('size', onPanelSizeChange);
+            Lampa.PlayerPanel.listener.follow('size', onPanelSizeChange);
+            Lampa.PlayerPanel.listener.remove('speed', onPanelSpeedChange);
+            Lampa.PlayerPanel.listener.follow('speed', onPanelSpeedChange);
+        }
+
+        document.removeEventListener('keydown', listenHotkeys, true);
+        document.addEventListener('keydown', listenHotkeys, true);
         Lampa.Player.listener.remove('destroy', listenDestroy);
         Lampa.Player.listener.follow('destroy', listenDestroy);
-        log('Hotkeys 1.9 listener started');
+
+        console.log('Hotkeys', 'Hotkeys 2.0 listener started');
     }
 
     Lampa.Player.listener.follow('ready', startHotkeys);
