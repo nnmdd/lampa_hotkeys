@@ -6,7 +6,6 @@
 
     Lampa.Platform.tv();
 
-    // Инжект стилей для прозрачных тостов и мини-бейджей на иконках нижней панели
     if (!document.getElementById('lampa-hotkeys-noty-style')) {
         var style = document.createElement('style');
         style.id = 'lampa-hotkeys-noty-style';
@@ -58,6 +57,16 @@
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+    }
+
+    function isPlayerControllerActive() {
+        if (!Lampa.Controller || !Lampa.Controller.enabled) return true;
+        var enabled = Lampa.Controller.enabled();
+        if (!enabled || !enabled.name) return true;
+        // Разрешаем работу хоткеев во время воспроизведения и при открытой нижней панели
+        return enabled.name === 'player' ||
+               enabled.name === 'player_panel' ||
+               enabled.name === 'player_footer';
     }
 
     function triggerPanelButton(selector) {
@@ -114,9 +123,9 @@
 
         if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
             Lampa.PlayerPanel.listener.send('size', { size: nextSize });
+        } else {
+            updatePanelBadge('.player-panel__size', nextSize.toUpperCase(), nextSize === 'default');
         }
-
-        updatePanelBadge('.player-panel__size', nextSize.toUpperCase(), nextSize === 'default');
 
         showToast(
             Lampa.Lang.translate('player_video_size') + ': ' +
@@ -144,10 +153,10 @@
 
             if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
                 Lampa.PlayerPanel.listener.send('speed', { speed: nextSpeed });
+            } else {
+                var badgeText = nextSpeed === 'default' ? '1x' : nextSpeed + 'x';
+                updatePanelBadge('.player-panel__speed', badgeText, nextSpeed === 'default');
             }
-
-            var badgeText = nextSpeed === 'default' ? '1x' : nextSpeed + 'x';
-            updatePanelBadge('.player-panel__speed', badgeText, nextSpeed === 'default');
         }
 
         var speedText = nextSpeed === 'default'
@@ -157,15 +166,25 @@
         showToast(Lampa.Lang.translate('player_video_speed') + ': ' + speedText);
     }
 
-    // Описание привязок (код 27 исключен из next, чтобы не блокировать штатный Back/Esc)
+    function switchEpisode(direction) {
+        if (direction > 0) {
+            Lampa.PlayerPlaylist.next();
+        } else {
+            Lampa.PlayerPlaylist.prev();
+        }
+        // При смене серии HTML5 video сбрасывает playbackRate на 1.0, синхронизируем UI:
+        Lampa.Storage.set('player_speed', 'default', true);
+        updatePanelBadge('.player-panel__speed', '1x', true);
+    }
+
     var ACTIONS = [
         {
             codes: [166, 427, 33, 892, 68],
-            action: function () { Lampa.PlayerPlaylist.next(); }
+            action: function () { switchEpisode(1); }
         },
         {
             codes: [167, 428, 28, 34, 893, 65],
-            action: function () { Lampa.PlayerPlaylist.prev(); }
+            action: function () { switchEpisode(-1); }
         },
         {
             codes: [49, 97],
@@ -196,7 +215,6 @@
         }
     ];
 
-    // Предкомпиляция хеш-таблиц для O(1) поиска без циклов при каждом keydown
     var KEY_MAP = {};
     var CLOSE_MAP = {};
 
@@ -223,6 +241,8 @@
             }
             return;
         }
+
+        if (!isPlayerControllerActive()) return;
 
         var handler = KEY_MAP[keyCode];
         if (handler) {
@@ -260,7 +280,7 @@
         Lampa.Player.listener.remove('destroy', listenDestroy);
         Lampa.Player.listener.follow('destroy', listenDestroy);
 
-        console.log('Hotkeys', 'Hotkeys 2.0 listener started');
+        console.log('Hotkeys', 'Hotkeys 2.1 listener started');
     }
 
     Lampa.Player.listener.follow('ready', startHotkeys);
