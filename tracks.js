@@ -153,11 +153,14 @@
             });
 
             if (new_tracks.length) Lampa.PlayerPanel.setTracks(new_tracks);
+
+            if (parse_tracks.length > 0 && video_tracks.length === 0 && !webos_replace.tracks) {
+                scheduleTrackSync();
+            }
         }
 
         function setSubs() {
             if (!inited_parse || !Array.isArray(inited_parse.streams)) return;
-            // Если на WebOS уже пришли нативные сабы через Luna API, не затираем их HTML5-заглушками
             if (webos_replace.subs) {
                 setWebosSubs(webos_replace.subs);
                 return;
@@ -213,8 +216,6 @@
 
             if (new_subs.length) Lampa.PlayerPanel.setSubs(new_subs);
 
-            // Если в ffprobe есть субтитры, но плеер (например, при инициализации Dolby Vision)
-            // ещё не успел создать textTracks или прислать webos_subs — запускаем отложенную проверку
             if (parse_subs.length > 0 && video_subs.length === 0 && !webos_replace.subs) {
                 scheduleTrackSync();
             }
@@ -239,7 +240,6 @@
                 }
             });
 
-            // Принудительно обновляем список в панели, если ранее он был заполнен ghost-элементами
             Lampa.PlayerPanel.setTracks(video_tracks);
         }
 
@@ -266,11 +266,9 @@
                 }
             });
 
-            // Принудительно передаем живые WebOS-субтитры в панель (снимает серый ghost-статус)
             Lampa.PlayerPanel.setSubs(video_subs);
         }
 
-        // Поллинг на случай медленной инициализации контейнера Dolby Vision (до 15 попыток по 600 мс)
         function scheduleTrackSync() {
             if (retryTimer || !inited || retryCount >= 15) return;
             retryTimer = setTimeout(function () {
@@ -281,7 +279,7 @@
                 var hasSubsNow = getSubs().length > 0 || Boolean(webos_replace.subs);
                 var hasTracksNow = getTracks().length > 0 || Boolean(webos_replace.tracks);
 
-                log('Tracks', 'DV/WebOS retry sync #' + retryCount, 'subsReady:', hasSubsNow);
+                log('Tracks', 'DV/WebOS retry sync #' + retryCount, 'subsReady:', hasSubsNow, 'tracksReady:', hasTracksNow);
 
                 if (hasTracksNow) {
                     if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
@@ -291,7 +289,9 @@
                 if (hasSubsNow) {
                     if (webos_replace.subs) setWebosSubs(webos_replace.subs);
                     else setSubs();
-                } else {
+                }
+
+                if (!hasSubsNow || !hasTracksNow) {
                     scheduleTrackSync();
                 }
             }, 600);
@@ -335,8 +335,6 @@
             } catch (e) {}
         }
 
-        // НЕ удаляем слушатели tracks/subs/canplay после первого вызова,
-        // так как на WebOS при старте Dolby Vision они могут приходить повторно после инициализации декодера
         function listenTracks() {
             log('Tracks', 'tracks video event');
             setTracks();
@@ -507,7 +505,7 @@
                         .replace('stereo', '2.0')
                         .replace('8 channels (FL+FR+FC+LFE+SL+SR+TFL+TFR)', '7.1');
                 }
-                var bit = a.bit_rate ? a.bit_rate : (a.tags && (a.tags.BPS || a.tags['BPS-eng'])) ? (a.tags.BPS || v.tags['BPS-eng']) : '--';
+                var bit = a.bit_rate ? a.bit_rate : (a.tags && (a.tags.BPS || a.tags['BPS-eng'])) ? (a.tags.BPS || a.tags['BPS-eng']) : '--';
                 line.rate = bit === '--' ? bit : Math.round(bit / 1000) + ' ' + Lampa.Lang.translate('speed_kb');
                 if (Lampa.Arrays.getKeys(line).length) audio.push(line);
             });
