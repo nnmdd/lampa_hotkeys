@@ -1,69 +1,127 @@
 (function () {
     'use strict';
 
-    // Определяем адрес локального TorrServer (обычно совпадает с хостом, откуда запущена Lampa, или стандартный порт 8090)
-    var getTorrServerHost = function () {
-        if (window.TorrServer && typeof window.TorrServer.ip === 'string') {
-            return window.TorrServer.ip;
-        }
-        return window.location.protocol + '//' + (window.location.hostname || '127.0.0.1') + ':8090';
-    };
+    if (window.lampa_tracks_local_loaded) return;
+    window.lampa_tracks_local_loaded = true;
 
-    function requestStreamMeta(params, callback) {
+    var list_opened = false;
+    var ffprobe_cache = {};
+
+    // Получаем базовый URL локального TorrServer из настроек Lampa
+    function getTorrServerUrl() {
+        if (Lampa.Torserver && typeof Lampa.Torserver.ip === 'function') {
+            var ip = Lampa.Torserver.ip();
+            if (ip) return ip.replace(/\/+$/, '');
+        }
+        var url = Lampa.Storage.get('torrserver_url', '') || Lampa.Storage.field('torrserver_url') || '';
+        if (url) {
+            if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+            return url.replace(/\/+$/, '');
+        }
+        return '';
+    }
+
+    // Формируем заголовки авторизации, если в Lampa включен вход в TorrServer по паролю
+    function getTorrServerHeaders() {
+        var headers = {};
+        if (Lampa.Storage.field('torrserver_auth')) {
+            var login = Lampa.Storage.get('torrserver_login', '');
+            var pass = Lampa.Storage.field('torrserver_password') || Lampa.Storage.get('torrserver_password', '');
+            if (login && pass && window.btoa) {
+                headers['Authorization'] = 'Basic ' + window.btoa(login + ':' + pass);
+            }
+        }
+        return headers;
+    }
+
+    // Извлекаем hash и id файла из объекта params или из URL потока TorrServer
+    function resolveTorrentParams(params) {
+        var hash = params.torrent_hash || params.hash || '';
+        var id = params.id !== undefined ? params.id : (params.index !== undefined ? params.index : '');
+        var streamUrl = params.url || params.path || '';
+
+        // Если запуск идет из истории/продолжения просмотра и hash/id не переданы напрямую, парсим из URL
+        if ((!hash || id === '') && streamUrl) {
+            var matchQuery = streamUrl.match(/[?&]link=([a-fA-F0-9]{40}).*?[?&]index=(\d+)/i);
+            if (matchQuery) {
+                hash = hash || matchQuery[1];
+                if (id === '') id = matchQuery[2];
+            } else {
+                var matchPath = streamUrl.match(/\/stream\/[^?]*\?link=([a-fA-F0-9]{40})&index=(\d+)/i);
+                if (matchPath) {
+                    hash = hash || matchPath[1];
+                    if (id === '') id = matchPath[2];
+                }
+            }
+        }
+
+        // Определяем хост TorrServer (из настроек Lampa или напрямую из URL потока)
+        var baseUrl = getTorrServerUrl();
+        if (!baseUrl && streamUrl && /^https?:\/\//i.test(streamUrl)) {
+            var mHost = streamUrl.match(/^(https?:\/\/[^\/]+)/i);
+            if (mHost) baseUrl = mHost[1];
+        }
+
+        return {
+            hash: hash,
+            id: id !== '' ? id : 1,
+            baseUrl: baseUrl
+        };
+    }
+
+    // Запрос к встроенному в TorrServer ffprobe: GET /ffp/{hash}/{id}
+    function reguest(params, callback) {
         if (!params) return function () {};
 
-        var ext = params.path ? params.path.split('.').pop().toLowerCase() : '';
-        
-        // Если это mp4 или передан локальный ffprb-кэш, не гоняем сеть
-        if (params.ffprobe && ext !== 'mp4') {
+        // 1. Если ffprobe уже передан самим компонентом Lampa
+        if (params.ffprobe && Array.isArray(params.ffprobe) && params.ffprobe.length) {
             var timer = setTimeout(function () {
                 callback({ streams: params.ffprobe });
-            }, 100);
+            }, 50);
             return function () { clearTimeout(timer); };
         }
 
-        // Если есть hash торрента и id файла, пробуем запросить метаданные из локального API TorrServer
-        if (params.torrent_hash && params.id !== undefined) {
-            var baseUrl = getTorrServerHost();
-            var apiUrl = baseUrl + '/stream/ee'; // или стандартный метод получения информации о торренте
-
-            var xhr = $.ajax({
-                url: apiUrl,
-                type: 'POST',
-                dataType: 'json',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    hash: params.torrent_hash,
-                    id: String(params.id)
-                }),
-                timeout: 3000,
-                success: function (res) {
-                    if (res && Array.isArray(res.streams)) {
-                        callback(res);
-                    } else {
-                        callback({ streams: [] });
-                    }
-                },
-                error: function () {
-                    // Fallback: если бэкенд недоступен, отдаем пустой массив, 
-                    // плеер переключится на нативный парсинг HTML5 (<video>)
-                    callback({ streams: [] });
-                }
-            });
-
-            return function () {
-                if (xhr && xhr.abort) xhr.abort();
-            };
+        var info = resolveTorrentParams(params);
+        if (!info.hash || !info.baseUrl) {
+            return function () {};
         }
 
-        callback({ streams: [] });
-        return function () {};
+        var cacheKey = info.hash + '_' + info.id;
+        if (ffprobe_cache[cacheKey]) {
+            var cachedTimer = setTimeout(function () {
+                callback(ffprobe_cache[cacheKey]);
+            }, 50);
+            return function () { clearTimeout(cachedTimer); };
+        }
+
+        var ffpUrl = info.baseUrl + '/ffp/' + info.hash + '/' + info.id;
+
+        var xhr = $.ajax({
+            url: ffpUrl,
+            type: 'GET',
+            dataType: 'json',
+            headers: getTorrServerHeaders(),
+            timeout: 15000,
+            success: function (json) {
+                if (json && Array.isArray(json.streams)) {
+                    ffprobe_cache[cacheKey] = json;
+                    callback(json);
+                }
+            },
+            error: function (err) {
+                console.log('Tracks', 'TorrServer /ffp/ error:', err && err.status);
+            }
+        });
+
+        return function () {
+            if (xhr && xhr.abort) xhr.abort();
+        };
     }
 
     function getTrackLabel(track, fallbackPrefix, index) {
         var tags = track.tags || {};
-        var title = tags.title || tags.handler_name || '';
-        if (/^(Sound|Video|Subtitle|Media|GPAC|ISO).*Handler$/i.test(title)) {
+        var title = tags.title || tags.TITLE || tags.handler_name || '';
+        if (/^(Sound|Video|Subtitle|Media|GPAC|ISO|Core Media).*Handler$/i.test(title)) {
             title = '';
         }
         if (!title) {
@@ -74,7 +132,13 @@
     }
 
     function getTrackLang(track) {
-        return (track.tags && track.tags.language) ? track.tags.language : '';
+        var tags = track.tags || {};
+        return tags.language || tags.LANGUAGE || '';
+    }
+
+    function isBitmapSubtitle(codecName) {
+        var c = (codecName || '').toLowerCase();
+        return c === 'hdmv_pgs_subtitle' || c === 'dvd_subtitle' || c === 'dvb_subtitle' || c === 'xsub';
     }
 
     function alignStreamsWithPlayer(streams, playerLength, unsupportedCodecs) {
@@ -84,7 +148,7 @@
                 var badCodec = unsupportedCodecs[c];
                 if (result.length > playerLength) {
                     result = result.filter(function (a) {
-                        return a.codec_name !== badCodec;
+                        return (a.codec_name || '').toLowerCase() !== badCodec;
                     });
                 }
             }
@@ -114,51 +178,37 @@
             return (video && video.textTracks) ? video.textTracks : [];
         }
 
-        log('Tracks', 'start (local/native mode)');
+        log('Tracks', 'start (TorrServer local ffprobe)');
 
         function setTracks() {
-            var video_tracks = getTracks();
-
-            // Если внешний парсер не дал данных, используем нативные дорожки плеера напрямую
-            if (!inited_parse || !Array.isArray(inited_parse.streams) || inited_parse.streams.length === 0) {
-                if (video_tracks.length > 0) {
-                    var native_tracks = [];
-                    for (var ni = 0; ni < video_tracks.length; ni++) {
-                        var n_tr = video_tracks[ni];
-                        native_tracks.push({
-                            index: ni,
-                            language: n_tr.language || '',
-                            label: n_tr.label || ('Audio ' + (ni + 1)),
-                            ghost: false,
-                            selected: n_tr.selected === true || n_tr.enabled === true
-                        });
-                    }
-                    Lampa.PlayerPanel.setTracks(native_tracks);
-                }
-                return;
-            }
-
+            if (!inited_parse || !Array.isArray(inited_parse.streams)) return;
             if (webos_replace.tracks) {
                 setWebosTracks(webos_replace.tracks);
                 return;
             }
 
             var new_tracks = [];
+            var video_tracks = getTracks();
             var parse_tracks = inited_parse.streams.filter(function (a) {
                 return a.codec_type === 'audio';
             });
+
+            log('Tracks', 'set tracks:', video_tracks.length, 'ffprobe:', parse_tracks.length);
 
             parse_tracks = alignStreamsWithPlayer(parse_tracks, video_tracks.length, ['truehd', 'dts', 'mlp']);
 
             parse_tracks.forEach(function (track, idx) {
                 var orig = video_tracks[idx];
-                var isSelected = orig ? (orig.selected === true || orig.enabled === true) : false;
+                var isSelected = orig ? (orig.selected === true || orig.enabled === true) : (idx === 0);
+                var codec = (track.codec_name || '').toLowerCase();
+                var isUnsupportedAudio = !orig && (codec === 'truehd' || codec === 'mlp');
 
                 var elem = {
                     index: idx,
                     language: getTrackLang(track),
                     label: getTrackLabel(track, 'Audio', idx),
-                    ghost: !orig,
+                    // Не делаем дорожку серой, если плеер просто еще не успел прогрузить audioTracks
+                    ghost: video_tracks.length > 0 ? !orig : isUnsupportedAudio,
                     selected: isSelected
                 };
 
@@ -189,50 +239,44 @@
             });
 
             if (new_tracks.length) Lampa.PlayerPanel.setTracks(new_tracks);
+
+            if (parse_tracks.length > 0 && video_tracks.length < parse_tracks.length) {
+                scheduleTrackSync();
+            }
         }
 
         function setSubs() {
-            var video_subs = getSubs();
-
-            if (!inited_parse || !Array.isArray(inited_parse.streams) || inited_parse.streams.length === 0) {
-                if (video_subs.length > 0) {
-                    var native_subs = [];
-                    for (var nj = 0; nj < video_subs.length; nj++) {
-                        var n_sub = video_subs[nj];
-                        native_subs.push({
-                            index: nj,
-                            language: n_sub.language || '',
-                            label: n_sub.label || ('Subtitle ' + (nj + 1)),
-                            ghost: false,
-                            selected: n_sub.selected === true || n_sub.mode === 'showing'
-                        });
-                    }
-                    Lampa.PlayerPanel.setSubs(native_subs);
-                }
-                return;
-            }
-
+            if (!inited_parse || !Array.isArray(inited_parse.streams)) return;
             if (webos_replace.subs) {
                 setWebosSubs(webos_replace.subs);
                 return;
             }
 
             var new_subs = [];
+            var video_subs = getSubs();
             var parse_subs = inited_parse.streams.filter(function (a) {
                 return a.codec_type === 'subtitle';
             });
 
-            parse_subs = alignStreamsWithPlayer(parse_subs, video_subs.length, ['hdmv_pgs_subtitle', 'dvd_subtitle']);
+            log('Tracks', 'set subs:', video_subs.length, 'ffprobe:', parse_subs.length);
+
+            parse_subs = alignStreamsWithPlayer(parse_subs, video_subs.length, ['hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle']);
 
             parse_subs.forEach(function (track, idx) {
                 var orig = video_subs[idx];
                 var isSelected = orig ? (orig.selected === true || orig.mode === 'showing') : false;
 
+                // ФИКС СЕРЫХ СУБТИТРОВ:
+                // Помечаем ghost: true ТОЛЬКО если это графические PGS/DVD сабы, которых нет в video.textTracks.
+                // Обычные текстовые субтитры (SRT/ASS/MOV_TEXT) всегда оставляем активными (ghost: false),
+                // даже если декодер Dolby Vision задержал инициализацию video.textTracks!
+                var isGhost = !orig && isBitmapSubtitle(track.codec_name);
+
                 var elem = {
                     index: idx,
                     language: getTrackLang(track),
                     label: getTrackLabel(track, 'Subtitles', idx),
-                    ghost: !orig,
+                    ghost: isGhost,
                     selected: isSelected
                 };
 
@@ -240,6 +284,13 @@
                     set: function (v) {
                         elem.selected = Boolean(v && v !== 'disabled');
                         if (v) {
+                            // Если к моменту клика пользователя подоспели нативные webos_subs, переключаем и их
+                            if (webos_replace.subs) {
+                                var wOffset = webos_replace.subs.length === parse_subs.length ? 0 : 1;
+                                var wSub = webos_replace.subs[elem.index + wOffset];
+                                if (wSub) wSub.mode = v;
+                            }
+
                             var txt = getSubs();
                             var sub = txt[elem.index];
 
@@ -263,12 +314,27 @@
             });
 
             if (new_subs.length) Lampa.PlayerPanel.setSubs(new_subs);
+
+            // Продолжаем фоновую синхронизацию, пока число дорожек в плеере меньше ожидаемого
+            if (parse_subs.length > 0 && video_subs.length < parse_subs.length) {
+                scheduleTrackSync();
+            }
         }
 
         function setWebosTracks(video_tracks) {
             if (!inited_parse || !Array.isArray(inited_parse.streams) || !video_tracks) return;
-            var parse_tracks = inited_parse.streams.filter(function (a) { return a.codec_type === 'audio'; });
+
+            var parse_tracks = inited_parse.streams.filter(function (a) {
+                return a.codec_type === 'audio';
+            });
+
+            log('Tracks', 'webos set tracks:', video_tracks.length, 'ffprobe:', parse_tracks.length);
+
             parse_tracks = alignStreamsWithPlayer(parse_tracks, video_tracks.length, ['truehd', 'dts', 'mlp']);
+
+            for (var k = 0; k < video_tracks.length; k++) {
+                video_tracks[k].ghost = false;
+            }
 
             parse_tracks.forEach(function (track, i) {
                 if (video_tracks[i]) {
@@ -277,16 +343,28 @@
                     video_tracks[i].ghost = false;
                 }
             });
+
             Lampa.PlayerPanel.setTracks(video_tracks);
         }
 
         function setWebosSubs(video_subs) {
             if (!inited_parse || !Array.isArray(inited_parse.streams) || !video_subs) return;
-            var parse_subs = inited_parse.streams.filter(function (a) { return a.codec_type === 'subtitle'; });
+
+            var parse_subs = inited_parse.streams.filter(function (a) {
+                return a.codec_type === 'subtitle';
+            });
+
             var realSubsCount = Math.max(0, video_subs.length - 1);
             var offset = video_subs.length === parse_subs.length ? 0 : 1;
 
-            parse_subs = alignStreamsWithPlayer(parse_subs, realSubsCount, ['hdmv_pgs_subtitle', 'dvd_subtitle']);
+            log('Tracks', 'webos set subs:', video_subs.length, 'ffprobe:', parse_subs.length);
+
+            parse_subs = alignStreamsWithPlayer(parse_subs, realSubsCount, ['hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle']);
+
+            // Снимаем ghost со всех элементов массива WebOS (включая пункт "Отключить")
+            for (var k = 0; k < video_subs.length; k++) {
+                video_subs[k].ghost = false;
+            }
 
             parse_subs.forEach(function (track, a) {
                 var i = a + offset;
@@ -296,29 +374,49 @@
                     video_subs[i].ghost = false;
                 }
             });
+
             Lampa.PlayerPanel.setSubs(video_subs);
         }
 
+        // Поллинг до 25 раз по 700 мс (~17.5 секунд), пока все дорожки контейнера не инициализируются
         function scheduleTrackSync() {
-            if (retryTimer || !inited || retryCount >= 10) return;
+            if (retryTimer || !inited || retryCount >= 25) return;
             retryTimer = setTimeout(function () {
                 retryTimer = null;
-                if (!inited) return;
+                if (!inited || !inited_parse || !Array.isArray(inited_parse.streams)) return;
                 retryCount++;
 
-                setTracks();
-                setSubs();
+                var expectedSubs = inited_parse.streams.filter(function (a) {
+                    return a.codec_type === 'subtitle' && !isBitmapSubtitle(a.codec_name);
+                }).length;
+                var expectedTracks = inited_parse.streams.filter(function (a) {
+                    return a.codec_type === 'audio';
+                }).length;
 
-                if (getSubs().length === 0 && getTracks().length === 0) {
+                var currentSubsCount = webos_replace.subs ? Math.max(0, webos_replace.subs.length - 1) : getSubs().length;
+                var currentTracksCount = webos_replace.tracks ? webos_replace.tracks.length : getTracks().length;
+
+                log('Tracks', 'Sync #' + retryCount, 'subs:', currentSubsCount + '/' + expectedSubs, 'tracks:', currentTracksCount + '/' + expectedTracks);
+
+                if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+                else setTracks();
+
+                if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+                else setSubs();
+
+                if (currentSubsCount < expectedSubs || currentTracksCount < expectedTracks) {
                     scheduleTrackSync();
                 }
-            }, 600);
+            }, 700);
         }
 
         function onNativeTrackAdded() {
             if (!inited) return;
-            setTracks();
-            setSubs();
+            if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+            else setTracks();
+
+            if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+            else setSubs();
         }
 
         function bindNativeTrackListeners() {
@@ -349,24 +447,42 @@
             } catch (e) {}
         }
 
-        function listenTracks() { setTracks(); }
-        function listenSubs() { setSubs(); }
-
-        function canPlay() {
-            bindNativeTrackListeners();
+        function listenTracks() {
+            log('Tracks', 'tracks video event');
             setTracks();
+        }
+
+        function listenSubs() {
+            log('Tracks', 'subs video event');
             setSubs();
         }
 
+        function canPlay() {
+            log('Tracks', 'canplay video event');
+            bindNativeTrackListeners();
+            if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+            else setTracks();
+
+            if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+            else setSubs();
+        }
+
         function listenWebosSubs(_data) {
-            if (_data && _data.subs && _data.subs.length) {
+            log('Tracks', 'webos subs event');
+            // На WebOS массив _data.subs часто сначала приходит с 1 элементом ("Отключить"),
+            // а реальные субтитры добавляются позже. Сохраняем ссылку, только когда в массиве есть реальные сабы (> 1)
+            if (_data && Array.isArray(_data.subs) && _data.subs.length > 0) {
                 webos_replace.subs = _data.subs;
                 if (inited_parse) setWebosSubs(_data.subs);
+                if (_data.subs.length <= 1) {
+                    scheduleTrackSync();
+                }
             }
         }
 
         function listenWebosTracks(_data) {
-            if (_data && _data.tracks && _data.tracks.length) {
+            log('Tracks', 'webos tracks event');
+            if (_data && Array.isArray(_data.tracks) && _data.tracks.length > 0) {
                 webos_replace.tracks = _data.tracks;
                 if (inited_parse) setWebosTracks(_data.tracks);
             }
@@ -377,23 +493,24 @@
             retryCount = 0;
             bindNativeTrackListeners();
 
-            // Сразу пробуем вытянуть нативные дорожки из плеера, пока ждем ответ сервера
-            setTracks();
-            setSubs();
-
-            abortRequest = requestStreamMeta(data, function (result) {
+            abortRequest = reguest(data, function (result) {
+                log('Tracks', 'parsed from TorrServer /ffp/', result);
                 inited_parse = result;
-                if (inited) {
-                    if (webos_replace.subs) setWebosSubs(webos_replace.subs);
-                    else setSubs();
 
-                    if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
-                    else setTracks();
+                if (inited) {
+                    if (webos_replace.subs && webos_replace.subs.length > 1) {
+                        setWebosSubs(webos_replace.subs);
+                    } else {
+                        setSubs();
+                    }
+
+                    if (webos_replace.tracks && webos_replace.tracks.length > 0) {
+                        setWebosTracks(webos_replace.tracks);
+                    } else {
+                        setTracks();
+                    }
                 }
             });
-
-            // Запускаем страхующий таймер на случай медленной инициализации контейнера (Dolby Vision)
-            scheduleTrackSync();
         }
 
         function listenDestroy() {
@@ -413,6 +530,7 @@
             Lampa.PlayerVideo.listener.remove('webos_subs', listenWebosSubs);
             Lampa.PlayerVideo.listener.remove('webos_tracks', listenWebosTracks);
             Lampa.PlayerVideo.listener.remove('canplay', canPlay);
+            log('Tracks', 'end');
         }
 
         Lampa.Player.listener.follow('destroy', listenDestroy);
@@ -424,9 +542,145 @@
         listenStart();
     }
 
-    // Слушатель старта плеера в Lampa
+    function parseMetainfo(data) {
+        var loading = Lampa.Template.get('tracks_loading');
+        data.item.after(loading);
+
+        reguest(data.element, function (result) {
+            if (!list_opened || !result || !Array.isArray(result.streams)) {
+                loading.remove();
+                return;
+            }
+
+            var html = Lampa.Template.get('tracks_metainfo', {});
+
+            var append = function (name, fields) {
+                if (fields.length) {
+                    var block = Lampa.Template.get('tracks_metainfo_block', {});
+                    block.find('.tracks-metainfo__label').text(
+                        Lampa.Lang.translate(
+                            name === 'video' ? 'extensions_hpu_video' :
+                            name === 'audio' ? 'player_tracks' : 'player_' + name
+                        )
+                    );
+                    fields.forEach(function (fieldData) {
+                        var item = $('<div class="tracks-metainfo__item tracks-metainfo__item--' + name + ' selector"></div>');
+                        item.on('hover:focus', function () {
+                            Lampa.Modal.scroll().update(item);
+                        });
+
+                        for (var key in fieldData) {
+                            if (Object.prototype.hasOwnProperty.call(fieldData, key)) {
+                                var div = $('<div class="tracks-metainfo__column--' + key + '"></div>');
+                                div.text(fieldData[key]);
+                                item.append(div);
+                            }
+                        }
+
+                        block.find('.tracks-metainfo__info').append(item);
+                    });
+                    html.append(block);
+                }
+            };
+
+            var video = [];
+            var audio = [];
+            var subs = [];
+
+            var codec_video = result.streams.filter(function (a) {
+                return a.codec_type === 'video' && a.codec_name !== 'mjpeg' && a.codec_name !== 'png';
+            });
+            var codec_audio = result.streams.filter(function (a) {
+                return a.codec_type === 'audio';
+            });
+            var codec_subs = result.streams.filter(function (a) {
+                return a.codec_type === 'subtitle';
+            });
+
+            codec_video.slice(0, 1).forEach(function (v) {
+                var line = {};
+                if (v.width && v.height) line.video = v.width + 'х' + v.height;
+
+                var durSec = v.duration || (result.format && result.format.duration);
+                if (durSec && !isNaN(durSec)) {
+                    line.duration = new Date(Number(durSec) * 1000).toISOString().slice(11, 19);
+                } else if (v.tags) {
+                    var rawDur = v.tags.DURATION || v.tags['DURATION-eng'] || '';
+                    if (rawDur) {
+                        line.duration = String(rawDur).split('.')[0];
+                    }
+                }
+
+                if (v.codec_name) line.codec = v.codec_name.toUpperCase();
+                if (Boolean(v.is_avc)) line.avc = 'AVC';
+                var bit = v.bit_rate ? v.bit_rate : (v.tags && (v.tags.BPS || v.tags['BPS-eng'])) ? (v.tags.BPS || v.tags['BPS-eng']) : (result.format && result.format.bit_rate ? result.format.bit_rate : '--');
+                line.rate = bit === '--' ? bit : Math.round(bit / 1000000) + ' ' + Lampa.Lang.translate('speed_mb');
+                if (Lampa.Arrays.getKeys(line).length) video.push(line);
+            });
+
+            codec_audio.forEach(function (a, i) {
+                var line = { num: i + 1 };
+                line.lang = getTrackLang(a).toUpperCase();
+                line.name = getTrackLabel(a, 'Audio', i);
+                if (a.codec_name) line.codec = a.codec_name.toUpperCase();
+                if (a.channel_layout) {
+                    line.channels = a.channel_layout
+                        .replace('(side)', '')
+                        .replace('stereo', '2.0')
+                        .replace('8 channels (FL+FR+FC+LFE+SL+SR+TFL+TFR)', '7.1');
+                } else if (a.channels) {
+                    line.channels = a.channels === 6 ? '5.1' : (a.channels === 8 ? '7.1' : (a.channels === 2 ? '2.0' : a.channels + ' ch'));
+                }
+                var bit = a.bit_rate ? a.bit_rate : (a.tags && (a.tags.BPS || a.tags['BPS-eng'])) ? (a.tags.BPS || a.tags['BPS-eng']) : '--';
+                line.rate = bit === '--' ? bit : Math.round(bit / 1000) + ' ' + Lampa.Lang.translate('speed_kb');
+                if (Lampa.Arrays.getKeys(line).length) audio.push(line);
+            });
+
+            codec_subs.forEach(function (a, i) {
+                var line = { num: i + 1 };
+                line.lang = getTrackLang(a).toUpperCase();
+                line.name = getTrackLabel(a, 'Subtitles', i);
+                if (a.codec_name) {
+                    line.codec = a.codec_name.toUpperCase()
+                        .replace('SUBRIP', 'SRT')
+                        .replace('HDMV_PGS_SUBTITLE', 'HDMV PGS')
+                        .replace('MOV_TEXT', 'MOV TEXT');
+                }
+                if (Lampa.Arrays.getKeys(line).length) subs.push(line);
+            });
+
+            append('video', video);
+            append('audio', audio);
+            append('subs', subs);
+            loading.remove();
+
+            if (video.length || audio.length || subs.length) {
+                data.item.after(html);
+            }
+
+            if (Lampa.Controller.enabled().name === 'modal') Lampa.Controller.toggle('modal');
+        });
+    }
+
     Lampa.Player.listener.follow('start', function (data) {
-        if (data.torrent_hash || data.path) subscribeTracks(data);
+        if (data && (data.torrent_hash || (data.url && data.url.indexOf('/stream/') !== -1))) {
+            subscribeTracks(data);
+        }
     });
+
+    Lampa.Listener.follow('torrent_file', function (data) {
+        if (data.type === 'list_open') list_opened = true;
+        if (data.type === 'list_close') list_opened = false;
+
+        if (data.type === 'render' && data.items.length === 1 && list_opened) {
+            parseMetainfo(data);
+        }
+    });
+
+    Lampa.Template.add('tracks_loading', "\n    <div class=\"tracks-loading\">\n        <span>#{loading}...</span>\n    </div>\n");
+    Lampa.Template.add('tracks_metainfo', "\n    <div class=\"tracks-metainfo\"></div>\n");
+    Lampa.Template.add('tracks_metainfo_block', "\n    <div class=\"tracks-metainfo__line\">\n        <div class=\"tracks-metainfo__label\"></div>\n        <div class=\"tracks-metainfo__info\"></div>\n    </div>\n");
+    Lampa.Template.add('tracks_css', "\n    <style>\n    .tracks-loading{margin-top:1em;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-box-align:start;-webkit-align-items:flex-start;-moz-box-align:start;-ms-flex-align:start;align-items:flex-start}.tracks-loading:before{content:'';display:inline-block;width:1.3em;height:1.3em;background:url('./img/loader.svg') no-repeat 50% 50%;-webkit-background-size:contain;-moz-background-size:contain;-o-background-size:contain;background-size:contain;margin-right:.4em}.tracks-loading>span{font-size:1.1em;line-height:1.1}.tracks-metainfo{margin-top:1em}.tracks-metainfo__line+.tracks-metainfo__line{margin-top:2em}.tracks-metainfo__label{opacity:.5;font-weight:600}.tracks-metainfo__info{padding-top:1em;line-height:1.2}.tracks-metainfo__info>div{background-color:rgba(0,0,0,0.22);display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-border-radius:.3em;-moz-border-radius:.3em;border-radius:.3em;-webkit-flex-wrap:wrap;-ms-flex-wrap:wrap;flex-wrap:wrap}.tracks-metainfo__info>div.focus{background-color:rgba(255,255,255,0.06)}.tracks-metainfo__info>div>div{padding:1em;-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0}.tracks-metainfo__info>div>div:not(:last-child){padding-right:1.5em}.tracks-metainfo__info>div+div{margin-top:1em}.tracks-metainfo__column--video,.tracks-metainfo__column--name{margin-right:auto}.tracks-metainfo__column--num{min-width:3em;padding-right:0}.tracks-metainfo__column--rate{min-width:7em;text-align:right}.tracks-metainfo__column--channels{min-width:5em;text-align:right}\n    </style>\n");
+    $('body').append(Lampa.Template.get('tracks_css', {}, true));
 
 })();
