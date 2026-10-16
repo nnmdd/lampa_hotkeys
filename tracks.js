@@ -1,18 +1,32 @@
 (function () {
     'use strict';
 
+    if (window.lampa_tracks_ws_loaded) return;
+    window.lampa_tracks_ws_loaded = true;
+
     var connect_host = '{localhost}';
     var list_opened = false;
+    var ffprobe_cache = {};
 
     function reguest(params, callback) {
         if (!params) return function () {};
 
         var ext = params.path ? params.path.split('.').pop().toLowerCase() : '';
-        if (params.ffprobe && ext !== 'mp4') {
+        if (params.ffprobe && Array.isArray(params.ffprobe) && params.ffprobe.length && ext !== 'mp4') {
             var timer = setTimeout(function () {
                 callback({ streams: params.ffprobe });
-            }, 200);
+            }, 100);
             return function () { clearTimeout(timer); };
+        }
+
+        if (!params.torrent_hash) return function () {};
+
+        var cacheKey = params.torrent_hash + '_' + params.id;
+        if (ffprobe_cache[cacheKey]) {
+            var cachedTimer = setTimeout(function () {
+                callback(ffprobe_cache[cacheKey]);
+            }, 50);
+            return function () { clearTimeout(cachedTimer); };
         }
 
         if (connect_host === '{localhost}') connect_host = '185.204.0.61';
@@ -24,17 +38,34 @@
             return function () {};
         }
 
+        var timeoutId = setTimeout(function () {
+            if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
+                socket.close();
+            }
+        }, 12000);
+
         socket.addEventListener('message', function (event) {
+            clearTimeout(timeoutId);
             socket.close();
             var json = {};
+
             try {
                 json = JSON.parse(event.data);
             } catch (e) {}
 
-            if (json && Array.isArray(json.streams)) callback(json);
+            if (json && Array.isArray(json.streams)) {
+                ffprobe_cache[cacheKey] = json;
+                callback(json);
+            }
+        });
+
+        socket.addEventListener('error', function () {
+            clearTimeout(timeoutId);
+            try { socket.close(); } catch (e) {}
         });
 
         return function () {
+            clearTimeout(timeoutId);
             if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
                 socket.close();
             }
@@ -43,8 +74,8 @@
 
     function getTrackLabel(track, fallbackPrefix, index) {
         var tags = track.tags || {};
-        var title = tags.title || tags.handler_name || '';
-        if (/^(Sound|Video|Subtitle|Media|GPAC|ISO).*Handler$/i.test(title)) {
+        var title = tags.title || tags.TITLE || tags.handler_name || '';
+        if (/^(Sound|Video|Subtitle|Media|GPAC|ISO|Core Media).*Handler$/i.test(title)) {
             title = '';
         }
         if (!title) {
@@ -55,7 +86,13 @@
     }
 
     function getTrackLang(track) {
-        return (track.tags && track.tags.language) ? track.tags.language : '';
+        var tags = track.tags || {};
+        return tags.language || tags.LANGUAGE || '';
+    }
+
+    function isBitmapSubtitle(codecName) {
+        var c = (codecName || '').toLowerCase();
+        return c === 'hdmv_pgs_subtitle' || c === 'dvd_subtitle' || c === 'dvb_subtitle' || c === 'xsub';
     }
 
     function alignStreamsWithPlayer(streams, playerLength, unsupportedCodecs) {
@@ -65,7 +102,7 @@
                 var badCodec = unsupportedCodecs[c];
                 if (result.length > playerLength) {
                     result = result.filter(function (a) {
-                        return a.codec_name !== badCodec;
+                        return (a.codec_name || '').toLowerCase() !== badCodec;
                     });
                 }
             }
@@ -95,11 +132,11 @@
             return (video && video.textTracks) ? video.textTracks : [];
         }
 
-        log('Tracks', 'start');
+        log('Tracks', 'start (WebSocket mode)');
 
         function setTracks() {
             if (!inited_parse || !Array.isArray(inited_parse.streams)) return;
-            if (webos_replace.tracks) {
+            if (webos_replace.tracks && webos_replace.tracks.length > 0) {
                 setWebosTracks(webos_replace.tracks);
                 return;
             }
@@ -116,13 +153,15 @@
 
             parse_tracks.forEach(function (track, idx) {
                 var orig = video_tracks[idx];
-                var isSelected = orig ? (orig.selected === true || orig.enabled === true) : false;
+                var isSelected = orig ? (orig.selected === true || orig.enabled === true) : (idx === 0);
+                var codec = (track.codec_name || '').toLowerCase();
+                var isUnsupportedAudio = !orig && (codec === 'truehd' || codec === 'mlp');
 
                 var elem = {
                     index: idx,
                     language: getTrackLang(track),
                     label: getTrackLabel(track, 'Audio', idx),
-                    ghost: !orig,
+                    ghost: video_tracks.length > 0 ? !orig : isUnsupportedAudio,
                     selected: isSelected
                 };
 
@@ -130,6 +169,10 @@
                     set: function (v) {
                         elem.selected = Boolean(v);
                         if (v) {
+                            if (webos_replace.tracks && webos_replace.tracks[elem.index]) {
+                                webos_replace.tracks[elem.index].enabled = true;
+                            }
+
                             var aud = getTracks();
                             var trk = aud[elem.index];
 
@@ -154,14 +197,14 @@
 
             if (new_tracks.length) Lampa.PlayerPanel.setTracks(new_tracks);
 
-            if (parse_tracks.length > 0 && video_tracks.length === 0 && !webos_replace.tracks) {
+            if (parse_tracks.length > 0 && video_tracks.length < parse_tracks.length) {
                 scheduleTrackSync();
             }
         }
 
         function setSubs() {
             if (!inited_parse || !Array.isArray(inited_parse.streams)) return;
-            if (webos_replace.subs) {
+            if (webos_replace.subs && webos_replace.subs.length > 1) {
                 setWebosSubs(webos_replace.subs);
                 return;
             }
@@ -174,17 +217,21 @@
 
             log('Tracks', 'set subs:', video_subs.length, 'ffprobe:', parse_subs.length);
 
-            parse_subs = alignStreamsWithPlayer(parse_subs, video_subs.length, ['hdmv_pgs_subtitle', 'dvd_subtitle']);
+            parse_subs = alignStreamsWithPlayer(parse_subs, video_subs.length, ['hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle']);
 
             parse_subs.forEach(function (track, idx) {
                 var orig = video_subs[idx];
                 var isSelected = orig ? (orig.selected === true || orig.mode === 'showing') : false;
 
+                // Текстовые субтитры всегда оставляем доступными (ghost: false),
+                // чтобы задержка инициализации декодера Dolby Vision на WebOS не делала их серыми
+                var isGhost = !orig && isBitmapSubtitle(track.codec_name);
+
                 var elem = {
                     index: idx,
                     language: getTrackLang(track),
                     label: getTrackLabel(track, 'Subtitles', idx),
-                    ghost: !orig,
+                    ghost: isGhost,
                     selected: isSelected
                 };
 
@@ -192,6 +239,12 @@
                     set: function (v) {
                         elem.selected = Boolean(v && v !== 'disabled');
                         if (v) {
+                            if (webos_replace.subs) {
+                                var wOffset = webos_replace.subs.length === parse_subs.length ? 0 : 1;
+                                var wSub = webos_replace.subs[elem.index + wOffset];
+                                if (wSub) wSub.mode = v;
+                            }
+
                             var txt = getSubs();
                             var sub = txt[elem.index];
 
@@ -216,7 +269,7 @@
 
             if (new_subs.length) Lampa.PlayerPanel.setSubs(new_subs);
 
-            if (parse_subs.length > 0 && video_subs.length === 0 && !webos_replace.subs) {
+            if (parse_subs.length > 0 && video_subs.length < parse_subs.length) {
                 scheduleTrackSync();
             }
         }
@@ -231,6 +284,10 @@
             log('Tracks', 'webos set tracks:', video_tracks.length, 'ffprobe:', parse_tracks.length);
 
             parse_tracks = alignStreamsWithPlayer(parse_tracks, video_tracks.length, ['truehd', 'dts', 'mlp']);
+
+            for (var k = 0; k < video_tracks.length; k++) {
+                video_tracks[k].ghost = false;
+            }
 
             parse_tracks.forEach(function (track, i) {
                 if (video_tracks[i]) {
@@ -255,7 +312,11 @@
 
             log('Tracks', 'webos set subs:', video_subs.length, 'ffprobe:', parse_subs.length);
 
-            parse_subs = alignStreamsWithPlayer(parse_subs, realSubsCount, ['hdmv_pgs_subtitle', 'dvd_subtitle']);
+            parse_subs = alignStreamsWithPlayer(parse_subs, realSubsCount, ['hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle']);
+
+            for (var k = 0; k < video_subs.length; k++) {
+                video_subs[k].ghost = false;
+            }
 
             parse_subs.forEach(function (track, a) {
                 var i = a + offset;
@@ -270,40 +331,46 @@
         }
 
         function scheduleTrackSync() {
-            if (retryTimer || !inited || retryCount >= 15) return;
+            if (retryTimer || !inited || retryCount >= 25) return;
             retryTimer = setTimeout(function () {
                 retryTimer = null;
-                if (!inited) return;
+                if (!inited || !inited_parse || !Array.isArray(inited_parse.streams)) return;
                 retryCount++;
 
-                var hasSubsNow = getSubs().length > 0 || Boolean(webos_replace.subs);
-                var hasTracksNow = getTracks().length > 0 || Boolean(webos_replace.tracks);
+                var expectedSubs = inited_parse.streams.filter(function (a) {
+                    return a.codec_type === 'subtitle' && !isBitmapSubtitle(a.codec_name);
+                }).length;
+                var expectedTracks = inited_parse.streams.filter(function (a) {
+                    return a.codec_type === 'audio';
+                }).length;
 
-                log('Tracks', 'DV/WebOS retry sync #' + retryCount, 'subsReady:', hasSubsNow, 'tracksReady:', hasTracksNow);
+                var currentSubsCount = (webos_replace.subs && webos_replace.subs.length > 1)
+                    ? webos_replace.subs.length - 1
+                    : getSubs().length;
+                var currentTracksCount = (webos_replace.tracks && webos_replace.tracks.length > 0)
+                    ? webos_replace.tracks.length
+                    : getTracks().length;
 
-                if (hasTracksNow) {
-                    if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
-                    else setTracks();
-                }
+                log('Tracks', 'Sync #' + retryCount, 'subs:', currentSubsCount + '/' + expectedSubs, 'tracks:', currentTracksCount + '/' + expectedTracks);
 
-                if (hasSubsNow) {
-                    if (webos_replace.subs) setWebosSubs(webos_replace.subs);
-                    else setSubs();
-                }
+                if (webos_replace.tracks && webos_replace.tracks.length > 0) setWebosTracks(webos_replace.tracks);
+                else setTracks();
 
-                if (!hasSubsNow || !hasTracksNow) {
+                if (webos_replace.subs && webos_replace.subs.length > 1) setWebosSubs(webos_replace.subs);
+                else setSubs();
+
+                if (currentSubsCount < expectedSubs || currentTracksCount < expectedTracks) {
                     scheduleTrackSync();
                 }
-            }, 600);
+            }, 700);
         }
 
         function onNativeTrackAdded() {
             if (!inited) return;
-            log('Tracks', 'native addtrack event triggered');
-            if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+            if (webos_replace.tracks && webos_replace.tracks.length > 0) setWebosTracks(webos_replace.tracks);
             else setTracks();
 
-            if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+            if (webos_replace.subs && webos_replace.subs.length > 1) setWebosSubs(webos_replace.subs);
             else setSubs();
         }
 
@@ -348,24 +415,30 @@
         function canPlay() {
             log('Tracks', 'canplay video event');
             bindNativeTrackListeners();
-            if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+            if (webos_replace.tracks && webos_replace.tracks.length > 0) setWebosTracks(webos_replace.tracks);
             else setTracks();
 
-            if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+            if (webos_replace.subs && webos_replace.subs.length > 1) setWebosSubs(webos_replace.subs);
             else setSubs();
         }
 
         function listenWebosSubs(_data) {
             log('Tracks', 'webos subs event');
-            if (_data && _data.subs && _data.subs.length) {
+            if (_data && Array.isArray(_data.subs) && _data.subs.length > 0) {
                 webos_replace.subs = _data.subs;
-                if (inited_parse) setWebosSubs(_data.subs);
+                if (inited_parse) {
+                    if (_data.subs.length > 1) setWebosSubs(_data.subs);
+                    else setSubs();
+                }
+                if (_data.subs.length <= 1) {
+                    scheduleTrackSync();
+                }
             }
         }
 
         function listenWebosTracks(_data) {
             log('Tracks', 'webos tracks event');
-            if (_data && _data.tracks && _data.tracks.length) {
+            if (_data && Array.isArray(_data.tracks) && _data.tracks.length > 0) {
                 webos_replace.tracks = _data.tracks;
                 if (inited_parse) setWebosTracks(_data.tracks);
             }
@@ -377,15 +450,21 @@
             bindNativeTrackListeners();
 
             abortRequest = reguest(data, function (result) {
-                log('Tracks', 'parsed', result);
+                log('Tracks', 'parsed from WebSocket', result);
                 inited_parse = result;
 
                 if (inited) {
-                    if (webos_replace.subs) setWebosSubs(webos_replace.subs);
-                    else setSubs();
+                    if (webos_replace.subs && webos_replace.subs.length > 1) {
+                        setWebosSubs(webos_replace.subs);
+                    } else {
+                        setSubs();
+                    }
 
-                    if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
-                    else setTracks();
+                    if (webos_replace.tracks && webos_replace.tracks.length > 0) {
+                        setWebosTracks(webos_replace.tracks);
+                    } else {
+                        setTracks();
+                    }
                 }
             });
         }
@@ -478,8 +557,9 @@
                 var line = {};
                 if (v.width && v.height) line.video = v.width + 'х' + v.height;
 
-                if (v.duration) {
-                    line.duration = new Date(v.duration * 1000).toISOString().slice(11, 19);
+                var durSec = v.duration || (result.format && result.format.duration);
+                if (durSec && !isNaN(durSec)) {
+                    line.duration = new Date(Number(durSec) * 1000).toISOString().slice(11, 19);
                 } else if (v.tags) {
                     var rawDur = v.tags.DURATION || v.tags['DURATION-eng'] || '';
                     if (rawDur) {
@@ -489,7 +569,7 @@
 
                 if (v.codec_name) line.codec = v.codec_name.toUpperCase();
                 if (Boolean(v.is_avc)) line.avc = 'AVC';
-                var bit = v.bit_rate ? v.bit_rate : (v.tags && (v.tags.BPS || v.tags['BPS-eng'])) ? (v.tags.BPS || v.tags['BPS-eng']) : '--';
+                var bit = v.bit_rate ? v.bit_rate : (v.tags && (v.tags.BPS || v.tags['BPS-eng'])) ? (v.tags.BPS || v.tags['BPS-eng']) : (result.format && result.format.bit_rate ? result.format.bit_rate : '--');
                 line.rate = bit === '--' ? bit : Math.round(bit / 1000000) + ' ' + Lampa.Lang.translate('speed_mb');
                 if (Lampa.Arrays.getKeys(line).length) video.push(line);
             });
@@ -504,6 +584,8 @@
                         .replace('(side)', '')
                         .replace('stereo', '2.0')
                         .replace('8 channels (FL+FR+FC+LFE+SL+SR+TFL+TFR)', '7.1');
+                } else if (a.channels) {
+                    line.channels = a.channels === 6 ? '5.1' : (a.channels === 8 ? '7.1' : (a.channels === 2 ? '2.0' : a.channels + ' ch'));
                 }
                 var bit = a.bit_rate ? a.bit_rate : (a.tags && (a.tags.BPS || a.tags['BPS-eng'])) ? (a.tags.BPS || a.tags['BPS-eng']) : '--';
                 line.rate = bit === '--' ? bit : Math.round(bit / 1000) + ' ' + Lampa.Lang.translate('speed_kb');
@@ -537,7 +619,7 @@
     }
 
     Lampa.Player.listener.follow('start', function (data) {
-        if (data.torrent_hash) subscribeTracks(data);
+        if (data && data.torrent_hash) subscribeTracks(data);
     });
 
     Lampa.Listener.follow('torrent_file', function (data) {
