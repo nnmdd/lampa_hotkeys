@@ -7,74 +7,98 @@
     var list_opened = false;
     var ffprobe_cache = {};
 
+    function log() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('[TracksLocal]');
+        console.log.apply(console, args);
+    }
+
+    function warn() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('[TracksLocal WARN]');
+        console.warn.apply(console, args);
+    }
+
     // Получаем базовый URL локального TorrServer из настроек Lampa
     function getTorrServerUrl() {
-        if (Lampa.Torserver && typeof Lampa.Torserver.ip === 'function') {
+        if (window.Lampa && Lampa.Torserver && typeof Lampa.Torserver.ip === 'function') {
             var ip = Lampa.Torserver.ip();
             if (ip) return ip.replace(/\/+$/, '');
         }
-        var url = Lampa.Storage.get('torrserver_url', '') || Lampa.Storage.field('torrserver_url') || '';
-        if (url) {
-            if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
-            return url.replace(/\/+$/, '');
+        if (window.Lampa && Lampa.Storage) {
+            var url = Lampa.Storage.get('torrserver_url', '') || Lampa.Storage.field('torrserver_url') || '';
+            if (url) {
+                if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+                return url.replace(/\/+$/, '');
+            }
         }
         return '';
     }
 
-    // Формируем заголовки авторизации, если в Lampa включен вход в TorrServer по паролю
-    function getTorrServerHeaders() {
-        var headers = {};
-        if (Lampa.Storage.field('torrserver_auth')) {
+    // Формируем заголовок авторизации, если в Lampa включен вход в TorrServer по паролю
+    function getTorrServerAuthHeader() {
+        if (window.Lampa && Lampa.Storage && Lampa.Storage.field('torrserver_auth')) {
             var login = Lampa.Storage.get('torrserver_login', '');
             var pass = Lampa.Storage.field('torrserver_password') || Lampa.Storage.get('torrserver_password', '');
             if (login && pass && window.btoa) {
-                headers['Authorization'] = 'Basic ' + window.btoa(login + ':' + pass);
+                return 'Basic ' + window.btoa(login + ':' + pass);
             }
         }
-        return headers;
+        return '';
     }
 
-    // Извлекаем hash и id файла из объекта params или из URL потока TorrServer
+    // Извлекаем hash, id файла и базовый URL из параметров плеера или из самой ссылки на поток
     function resolveTorrentParams(params) {
-        var hash = params.torrent_hash || params.hash || '';
-        var id = params.id !== undefined ? params.id : (params.index !== undefined ? params.index : '');
         var streamUrl = params.url || params.path || '';
+        var hash = params.torrent_hash || params.hash || (params.torrent && params.torrent.hash) || '';
+        var id = '';
 
-        // Если запуск идет из истории/продолжения просмотра и hash/id не переданы напрямую, парсим из URL
-        if ((!hash || id === '') && streamUrl) {
-            var matchQuery = streamUrl.match(/[?&]link=([a-fA-F0-9]{40}).*?[?&]index=(\d+)/i);
-            if (matchQuery) {
-                hash = hash || matchQuery[1];
-                if (id === '') id = matchQuery[2];
-            } else {
-                var matchPath = streamUrl.match(/\/stream\/[^?]*\?link=([a-fA-F0-9]{40})&index=(\d+)/i);
-                if (matchPath) {
-                    hash = hash || matchPath[1];
-                    if (id === '') id = matchPath[2];
-                }
-            }
+        if (params.id !== undefined && params.id !== null) id = params.id;
+        else if (params.index !== undefined && params.index !== null) id = params.index;
+        else if (params.torrent && params.torrent.index !== undefined) id = params.torrent.index;
+
+        // Если запуск идет из истории или продолжения просмотра, вытаскиваем link (hash) и index (id) из URL потока
+        if (streamUrl) {
+            var mLink = streamUrl.match(/[?&]link=([a-fA-F0-9]{40})/i);
+            if (mLink && !hash) hash = mLink[1];
+
+            var mIndex = streamUrl.match(/[?&]index=(\d+)/i);
+            if (mIndex && id === '') id = mIndex[1];
         }
 
-        // Определяем хост TorrServer (из настроек Lampa или напрямую из URL потока)
-        var baseUrl = getTorrServerUrl();
-        if (!baseUrl && streamUrl && /^https?:\/\//i.test(streamUrl)) {
+        // Приоритетно берем тот же хост и порт, с которого играет само видео
+        var baseUrl = '';
+        if (streamUrl && /^https?:\/\//i.test(streamUrl)) {
             var mHost = streamUrl.match(/^(https?:\/\/[^\/]+)/i);
             if (mHost) baseUrl = mHost[1];
         }
+        if (!baseUrl) {
+            baseUrl = getTorrServerUrl();
+        }
+
+        // В TorrServer /ffp/{hash}/{id} индексация файлов начинается с 1 (если 0 — приводим к 1, кроме случаев явной индексации)
+        var numericId = parseInt(id, 10);
+        if (isNaN(numericId) || numericId < 0) numericId = 1;
 
         return {
             hash: hash,
-            id: id !== '' ? id : 1,
-            baseUrl: baseUrl
+            id: numericId,
+            baseUrl: baseUrl,
+            streamUrl: streamUrl
         };
     }
 
     // Запрос к встроенному в TorrServer ffprobe: GET /ffp/{hash}/{id}
+    // Использует чистый XMLHttpRequest (Simple GET Request без лишних заголовков, чтобы не вызывать CORS OPTIONS preflight)
     function reguest(params, callback) {
-        if (!params) return function () {};
+        if (!params) {
+            warn('reguest called with empty params');
+            return function () {};
+        }
 
-        // 1. Если ffprobe уже передан самим компонентом Lampa
+        // 1. Если ffprobe уже получен самой Lampa при открытии карточки торрента
         if (params.ffprobe && Array.isArray(params.ffprobe) && params.ffprobe.length) {
+            log('Using preloaded params.ffprobe from Lampa, streams count:', params.ffprobe.length);
             var timer = setTimeout(function () {
                 callback({ streams: params.ffprobe });
             }, 50);
@@ -83,45 +107,98 @@
 
         var info = resolveTorrentParams(params);
         if (!info.hash || !info.baseUrl) {
+            warn('Cannot resolve TorrServer hash or baseUrl:', info, 'Raw params:', params);
             return function () {};
         }
 
         var cacheKey = info.hash + '_' + info.id;
         if (ffprobe_cache[cacheKey]) {
+            log('Using cached /ffp/ response for key:', cacheKey);
             var cachedTimer = setTimeout(function () {
                 callback(ffprobe_cache[cacheKey]);
             }, 50);
             return function () { clearTimeout(cachedTimer); };
         }
 
-        var ffpUrl = info.baseUrl + '/ffp/' + info.hash + '/' + info.id;
+        // Протокол страницы и протокол TorrServer (диагностика Mixed Content)
+        var pageProto = window.location.protocol;
+        var tsProto = info.baseUrl.split(':')[0] + ':';
+        if (pageProto === 'https:' && tsProto === 'http:') {
+            warn(
+                'Mixed Content Warning: Lampa открыта по HTTPS (' + window.location.origin + '), ' +
+                'а TorrServer работает по HTTP (' + info.baseUrl + '). ' +
+                'Если браузер блокирует запрос со статусом 0 — разрешите "Небезопасный контент" (Insecure content) в настройках сайта.'
+            );
+        }
 
-        var xhr = $.ajax({
-            url: ffpUrl,
-            type: 'GET',
-            dataType: 'json',
-            headers: getTorrServerHeaders(),
-            timeout: 15000,
-            success: function (json) {
+        var ffpUrl = info.baseUrl + '/ffp/' + info.hash + '/' + info.id;
+        log('Requesting TorrServer ffprobe:', ffpUrl);
+
+        var aborted = false;
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', ffpUrl, true);
+        xhr.timeout = 15000;
+
+        var authHeader = getTorrServerAuthHeader();
+        if (authHeader) {
+            xhr.setRequestHeader('Authorization', authHeader);
+        }
+
+        xhr.onload = function () {
+            if (aborted) return;
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+                var json = null;
+                try {
+                    json = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    warn('Failed to parse /ffp/ JSON:', e, xhr.responseText);
+                }
+
                 if (json && Array.isArray(json.streams)) {
+                    log('Received /ffp/ streams:', json.streams.length, 'for', cacheKey);
                     ffprobe_cache[cacheKey] = json;
                     callback(json);
+                } else {
+                    warn('Empty or invalid /ffp/ response from TorrServer:', json);
                 }
-            },
-            error: function (err) {
-                console.log('Tracks', 'TorrServer /ffp/ error:', err && err.status);
+            } else {
+                warn('TorrServer /ffp/ returned HTTP status:', xhr.status, xhr.statusText, 'URL:', ffpUrl);
             }
-        });
+        };
+
+        xhr.ontimeout = function () {
+            if (!aborted) {
+                warn('TorrServer /ffp/ request timed out (15s):', ffpUrl);
+            }
+        };
+
+        xhr.onerror = function () {
+            if (!aborted) {
+                warn(
+                    'TorrServer /ffp/ network error (status: ' + xhr.status + '). ' +
+                    'Возможные причины: блокировка Mixed Content (HTTPS->HTTP), Private Network Access или недоступность ' + ffpUrl
+                );
+            }
+        };
+
+        try {
+            xhr.send();
+        } catch (e) {
+            warn('xhr.send() exception:', e);
+        }
 
         return function () {
-            if (xhr && xhr.abort) xhr.abort();
+            aborted = true;
+            try { xhr.abort(); } catch (e) {}
         };
     }
 
     function getTrackLabel(track, fallbackPrefix, index) {
         var tags = track.tags || {};
         var title = tags.title || tags.TITLE || tags.handler_name || '';
-        if (/^(Sound|Video|Subtitle|Media|GPAC|ISO|Core Media).*Handler$/i.test(title)) {
+        // Отсекаем технические заглушки MP4/MKV
+        if (/^(Sound|Video|Subtitle|Media|GPAC|ISO|Core Media|Bento4).*Handler$/i.test(title)) {
             title = '';
         }
         if (!title) {
@@ -164,10 +241,6 @@
         var retryTimer = null;
         var retryCount = 0;
 
-        function log() {
-            console.log.apply(console.log, arguments);
-        }
-
         function getTracks() {
             var video = Lampa.PlayerVideo.video();
             return (video && video.audioTracks) ? video.audioTracks : [];
@@ -178,11 +251,11 @@
             return (video && video.textTracks) ? video.textTracks : [];
         }
 
-        log('Tracks', 'start (TorrServer local ffprobe)');
+        log('Player session started, subscribing to tracks/subs events. Params:', data);
 
         function setTracks() {
             if (!inited_parse || !Array.isArray(inited_parse.streams)) return;
-            if (webos_replace.tracks) {
+            if (webos_replace.tracks && webos_replace.tracks.length > 0) {
                 setWebosTracks(webos_replace.tracks);
                 return;
             }
@@ -193,7 +266,7 @@
                 return a.codec_type === 'audio';
             });
 
-            log('Tracks', 'set tracks:', video_tracks.length, 'ffprobe:', parse_tracks.length);
+            log('setTracks -> HTML5 audioTracks:', video_tracks.length, '| ffprobe audio streams:', parse_tracks.length);
 
             parse_tracks = alignStreamsWithPlayer(parse_tracks, video_tracks.length, ['truehd', 'dts', 'mlp']);
 
@@ -207,7 +280,6 @@
                     index: idx,
                     language: getTrackLang(track),
                     label: getTrackLabel(track, 'Audio', idx),
-                    // Не делаем дорожку серой, если плеер просто еще не успел прогрузить audioTracks
                     ghost: video_tracks.length > 0 ? !orig : isUnsupportedAudio,
                     selected: isSelected
                 };
@@ -216,6 +288,10 @@
                     set: function (v) {
                         elem.selected = Boolean(v);
                         if (v) {
+                            log('Switching HTML5 audio track to index:', elem.index, elem.label);
+                            if (webos_replace.tracks && webos_replace.tracks[elem.index]) {
+                                webos_replace.tracks[elem.index].enabled = true;
+                            }
                             var aud = getTracks();
                             var trk = aud[elem.index];
 
@@ -247,7 +323,7 @@
 
         function setSubs() {
             if (!inited_parse || !Array.isArray(inited_parse.streams)) return;
-            if (webos_replace.subs) {
+            if (webos_replace.subs && webos_replace.subs.length > 1) {
                 setWebosSubs(webos_replace.subs);
                 return;
             }
@@ -258,7 +334,7 @@
                 return a.codec_type === 'subtitle';
             });
 
-            log('Tracks', 'set subs:', video_subs.length, 'ffprobe:', parse_subs.length);
+            log('setSubs -> HTML5 textTracks:', video_subs.length, '| ffprobe subtitle streams:', parse_subs.length);
 
             parse_subs = alignStreamsWithPlayer(parse_subs, video_subs.length, ['hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle']);
 
@@ -266,10 +342,8 @@
                 var orig = video_subs[idx];
                 var isSelected = orig ? (orig.selected === true || orig.mode === 'showing') : false;
 
-                // ФИКС СЕРЫХ СУБТИТРОВ:
-                // Помечаем ghost: true ТОЛЬКО если это графические PGS/DVD сабы, которых нет в video.textTracks.
-                // Обычные текстовые субтитры (SRT/ASS/MOV_TEXT) всегда оставляем активными (ghost: false),
-                // даже если декодер Dolby Vision задержал инициализацию video.textTracks!
+                // Текстовые субтитры (SRT/ASS/MOV_TEXT) никогда не блокируем флагом ghost,
+                // даже если декодер Dolby Vision / WebOS еще не закончил инициализацию textTracks
                 var isGhost = !orig && isBitmapSubtitle(track.codec_name);
 
                 var elem = {
@@ -284,7 +358,7 @@
                     set: function (v) {
                         elem.selected = Boolean(v && v !== 'disabled');
                         if (v) {
-                            // Если к моменту клика пользователя подоспели нативные webos_subs, переключаем и их
+                            log('Switching subtitle track to index:', elem.index, elem.label, 'mode:', v);
                             if (webos_replace.subs) {
                                 var wOffset = webos_replace.subs.length === parse_subs.length ? 0 : 1;
                                 var wSub = webos_replace.subs[elem.index + wOffset];
@@ -315,7 +389,6 @@
 
             if (new_subs.length) Lampa.PlayerPanel.setSubs(new_subs);
 
-            // Продолжаем фоновую синхронизацию, пока число дорожек в плеере меньше ожидаемого
             if (parse_subs.length > 0 && video_subs.length < parse_subs.length) {
                 scheduleTrackSync();
             }
@@ -328,7 +401,7 @@
                 return a.codec_type === 'audio';
             });
 
-            log('Tracks', 'webos set tracks:', video_tracks.length, 'ffprobe:', parse_tracks.length);
+            log('setWebosTracks -> WebOS tracks:', video_tracks.length, '| ffprobe audio:', parse_tracks.length);
 
             parse_tracks = alignStreamsWithPlayer(parse_tracks, video_tracks.length, ['truehd', 'dts', 'mlp']);
 
@@ -357,11 +430,10 @@
             var realSubsCount = Math.max(0, video_subs.length - 1);
             var offset = video_subs.length === parse_subs.length ? 0 : 1;
 
-            log('Tracks', 'webos set subs:', video_subs.length, 'ffprobe:', parse_subs.length);
+            log('setWebosSubs -> WebOS subs:', video_subs.length, '(real:', realSubsCount + ') | ffprobe subs:', parse_subs.length);
 
             parse_subs = alignStreamsWithPlayer(parse_subs, realSubsCount, ['hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle']);
 
-            // Снимаем ghost со всех элементов массива WebOS (включая пункт "Отключить")
             for (var k = 0; k < video_subs.length; k++) {
                 video_subs[k].ghost = false;
             }
@@ -378,7 +450,7 @@
             Lampa.PlayerPanel.setSubs(video_subs);
         }
 
-        // Поллинг до 25 раз по 700 мс (~17.5 секунд), пока все дорожки контейнера не инициализируются
+        // Отложенная синхронизация для медленной инициализации декодера Dolby Vision / WebOS
         function scheduleTrackSync() {
             if (retryTimer || !inited || retryCount >= 25) return;
             retryTimer = setTimeout(function () {
@@ -393,15 +465,19 @@
                     return a.codec_type === 'audio';
                 }).length;
 
-                var currentSubsCount = webos_replace.subs ? Math.max(0, webos_replace.subs.length - 1) : getSubs().length;
-                var currentTracksCount = webos_replace.tracks ? webos_replace.tracks.length : getTracks().length;
+                var currentSubsCount = (webos_replace.subs && webos_replace.subs.length > 1)
+                    ? (webos_replace.subs.length - 1)
+                    : getSubs().length;
+                var currentTracksCount = (webos_replace.tracks && webos_replace.tracks.length > 0)
+                    ? webos_replace.tracks.length
+                    : getTracks().length;
 
-                log('Tracks', 'Sync #' + retryCount, 'subs:', currentSubsCount + '/' + expectedSubs, 'tracks:', currentTracksCount + '/' + expectedTracks);
+                log('Retry sync #' + retryCount, '-> subs ready:', currentSubsCount + '/' + expectedSubs, '| tracks ready:', currentTracksCount + '/' + expectedTracks);
 
-                if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+                if (webos_replace.tracks && webos_replace.tracks.length > 0) setWebosTracks(webos_replace.tracks);
                 else setTracks();
 
-                if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+                if (webos_replace.subs && webos_replace.subs.length > 1) setWebosSubs(webos_replace.subs);
                 else setSubs();
 
                 if (currentSubsCount < expectedSubs || currentTracksCount < expectedTracks) {
@@ -410,12 +486,13 @@
             }, 700);
         }
 
-        function onNativeTrackAdded() {
+        function onNativeTrackAdded(e) {
             if (!inited) return;
-            if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+            log('Native addtrack event fired:', e && e.type);
+            if (webos_replace.tracks && webos_replace.tracks.length > 0) setWebosTracks(webos_replace.tracks);
             else setTracks();
 
-            if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+            if (webos_replace.subs && webos_replace.subs.length > 1) setWebosSubs(webos_replace.subs);
             else setSubs();
         }
 
@@ -448,41 +525,44 @@
         }
 
         function listenTracks() {
-            log('Tracks', 'tracks video event');
+            log('Event: PlayerVideo "tracks"');
             setTracks();
         }
 
         function listenSubs() {
-            log('Tracks', 'subs video event');
+            log('Event: PlayerVideo "subs"');
             setSubs();
         }
 
         function canPlay() {
-            log('Tracks', 'canplay video event');
+            log('Event: PlayerVideo "canplay"');
             bindNativeTrackListeners();
-            if (webos_replace.tracks) setWebosTracks(webos_replace.tracks);
+            if (webos_replace.tracks && webos_replace.tracks.length > 0) setWebosTracks(webos_replace.tracks);
             else setTracks();
 
-            if (webos_replace.subs) setWebosSubs(webos_replace.subs);
+            if (webos_replace.subs && webos_replace.subs.length > 1) setWebosSubs(webos_replace.subs);
             else setSubs();
         }
 
         function listenWebosSubs(_data) {
-            log('Tracks', 'webos subs event');
-            // На WebOS массив _data.subs часто сначала приходит с 1 элементом ("Отключить"),
-            // а реальные субтитры добавляются позже. Сохраняем ссылку, только когда в массиве есть реальные сабы (> 1)
-            if (_data && Array.isArray(_data.subs) && _data.subs.length > 0) {
+            var count = (_data && Array.isArray(_data.subs)) ? _data.subs.length : 0;
+            log('Event: PlayerVideo "webos_subs", count:', count);
+            if (count > 0) {
                 webos_replace.subs = _data.subs;
-                if (inited_parse) setWebosSubs(_data.subs);
-                if (_data.subs.length <= 1) {
+                if (inited_parse) {
+                    if (count > 1) setWebosSubs(_data.subs);
+                    else setSubs();
+                }
+                if (count <= 1) {
                     scheduleTrackSync();
                 }
             }
         }
 
         function listenWebosTracks(_data) {
-            log('Tracks', 'webos tracks event');
-            if (_data && Array.isArray(_data.tracks) && _data.tracks.length > 0) {
+            var count = (_data && Array.isArray(_data.tracks)) ? _data.tracks.length : 0;
+            log('Event: PlayerVideo "webos_tracks", count:', count);
+            if (count > 0) {
                 webos_replace.tracks = _data.tracks;
                 if (inited_parse) setWebosTracks(_data.tracks);
             }
@@ -494,7 +574,6 @@
             bindNativeTrackListeners();
 
             abortRequest = reguest(data, function (result) {
-                log('Tracks', 'parsed from TorrServer /ffp/', result);
                 inited_parse = result;
 
                 if (inited) {
@@ -530,7 +609,7 @@
             Lampa.PlayerVideo.listener.remove('webos_subs', listenWebosSubs);
             Lampa.PlayerVideo.listener.remove('webos_tracks', listenWebosTracks);
             Lampa.PlayerVideo.listener.remove('canplay', canPlay);
-            log('Tracks', 'end');
+            log('Player session destroyed, listeners cleaned up');
         }
 
         Lampa.Player.listener.follow('destroy', listenDestroy);
@@ -545,6 +624,8 @@
     function parseMetainfo(data) {
         var loading = Lampa.Template.get('tracks_loading');
         data.item.after(loading);
+
+        log('parseMetainfo requested for file item:', data.element);
 
         reguest(data.element, function (result) {
             if (!list_opened || !result || !Array.isArray(result.streams)) {
@@ -662,25 +743,39 @@
         });
     }
 
-    Lampa.Player.listener.follow('start', function (data) {
-        if (data && (data.torrent_hash || (data.url && data.url.indexOf('/stream/') !== -1))) {
-            subscribeTracks(data);
-        }
-    });
+    function initPlugin() {
+        log('Plugin initialized');
 
-    Lampa.Listener.follow('torrent_file', function (data) {
-        if (data.type === 'list_open') list_opened = true;
-        if (data.type === 'list_close') list_opened = false;
+        Lampa.Player.listener.follow('start', function (data) {
+            if (data && (data.torrent_hash || data.hash || (data.url && data.url.indexOf('/stream/') !== -1))) {
+                subscribeTracks(data);
+            } else {
+                log('Player start ignored (not a torrent stream):', data && data.url);
+            }
+        });
 
-        if (data.type === 'render' && data.items.length === 1 && list_opened) {
-            parseMetainfo(data);
-        }
-    });
+        Lampa.Listener.follow('torrent_file', function (data) {
+            if (data.type === 'list_open') list_opened = true;
+            if (data.type === 'list_close') list_opened = false;
 
-    Lampa.Template.add('tracks_loading', "\n    <div class=\"tracks-loading\">\n        <span>#{loading}...</span>\n    </div>\n");
-    Lampa.Template.add('tracks_metainfo', "\n    <div class=\"tracks-metainfo\"></div>\n");
-    Lampa.Template.add('tracks_metainfo_block', "\n    <div class=\"tracks-metainfo__line\">\n        <div class=\"tracks-metainfo__label\"></div>\n        <div class=\"tracks-metainfo__info\"></div>\n    </div>\n");
-    Lampa.Template.add('tracks_css', "\n    <style>\n    .tracks-loading{margin-top:1em;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-box-align:start;-webkit-align-items:flex-start;-moz-box-align:start;-ms-flex-align:start;align-items:flex-start}.tracks-loading:before{content:'';display:inline-block;width:1.3em;height:1.3em;background:url('./img/loader.svg') no-repeat 50% 50%;-webkit-background-size:contain;-moz-background-size:contain;-o-background-size:contain;background-size:contain;margin-right:.4em}.tracks-loading>span{font-size:1.1em;line-height:1.1}.tracks-metainfo{margin-top:1em}.tracks-metainfo__line+.tracks-metainfo__line{margin-top:2em}.tracks-metainfo__label{opacity:.5;font-weight:600}.tracks-metainfo__info{padding-top:1em;line-height:1.2}.tracks-metainfo__info>div{background-color:rgba(0,0,0,0.22);display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-border-radius:.3em;-moz-border-radius:.3em;border-radius:.3em;-webkit-flex-wrap:wrap;-ms-flex-wrap:wrap;flex-wrap:wrap}.tracks-metainfo__info>div.focus{background-color:rgba(255,255,255,0.06)}.tracks-metainfo__info>div>div{padding:1em;-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0}.tracks-metainfo__info>div>div:not(:last-child){padding-right:1.5em}.tracks-metainfo__info>div+div{margin-top:1em}.tracks-metainfo__column--video,.tracks-metainfo__column--name{margin-right:auto}.tracks-metainfo__column--num{min-width:3em;padding-right:0}.tracks-metainfo__column--rate{min-width:7em;text-align:right}.tracks-metainfo__column--channels{min-width:5em;text-align:right}\n    </style>\n");
-    $('body').append(Lampa.Template.get('tracks_css', {}, true));
+            if (data.type === 'render' && data.items.length === 1 && list_opened) {
+                parseMetainfo(data);
+            }
+        });
+
+        Lampa.Template.add('tracks_loading', "\n    <div class=\"tracks-loading\">\n        <span>#{loading}...</span>\n    </div>\n");
+        Lampa.Template.add('tracks_metainfo', "\n    <div class=\"tracks-metainfo\"></div>\n");
+        Lampa.Template.add('tracks_metainfo_block', "\n    <div class=\"tracks-metainfo__line\">\n        <div class=\"tracks-metainfo__label\"></div>\n        <div class=\"tracks-metainfo__info\"></div>\n    </div>\n");
+        Lampa.Template.add('tracks_css', "\n    <style>\n    .tracks-loading{margin-top:1em;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-box-align:start;-webkit-align-items:flex-start;-moz-box-align:start;-ms-flex-align:start;align-items:flex-start}.tracks-loading:before{content:'';display:inline-block;width:1.3em;height:1.3em;background:url('./img/loader.svg') no-repeat 50% 50%;-webkit-background-size:contain;-moz-background-size:contain;-o-background-size:contain;background-size:contain;margin-right:.4em}.tracks-loading>span{font-size:1.1em;line-height:1.1}.tracks-metainfo{margin-top:1em}.tracks-metainfo__line+.tracks-metainfo__line{margin-top:2em}.tracks-metainfo__label{opacity:.5;font-weight:600}.tracks-metainfo__info{padding-top:1em;line-height:1.2}.tracks-metainfo__info>div{background-color:rgba(0,0,0,0.22);display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-border-radius:.3em;-moz-border-radius:.3em;border-radius:.3em;-webkit-flex-wrap:wrap;-ms-flex-wrap:wrap;flex-wrap:wrap}.tracks-metainfo__info>div.focus{background-color:rgba(255,255,255,0.06)}.tracks-metainfo__info>div>div{padding:1em;-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0}.tracks-metainfo__info>div>div:not(:last-child){padding-right:1.5em}.tracks-metainfo__info>div+div{margin-top:1em}.tracks-metainfo__column--video,.tracks-metainfo__column--name{margin-right:auto}.tracks-metainfo__column--num{min-width:3em;padding-right:0}.tracks-metainfo__column--rate{min-width:7em;text-align:right}.tracks-metainfo__column--channels{min-width:5em;text-align:right}\n    </style>\n");
+        $('body').append(Lampa.Template.get('tracks_css', {}, true));
+    }
+
+    if (window.appready) {
+        initPlugin();
+    } else {
+        Lampa.Listener.follow('app', function (e) {
+            if (e.type === 'ready') initPlugin();
+        });
+    }
 
 })();
