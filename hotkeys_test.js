@@ -1,8 +1,11 @@
+// hotkeys_test.js — v2.2.0
 (function () {
     'use strict';
 
+    var PLUGIN_VERSION = '2.2.0';
+
     if (window.lampa_hotkeys_loaded) return;
-    window.lampa_hotkeys_loaded = true;
+    window.lampa_hotkeys_loaded = PLUGIN_VERSION;
 
     Lampa.Platform.tv();
 
@@ -63,7 +66,6 @@
         if (!Lampa.Controller || !Lampa.Controller.enabled) return true;
         var enabled = Lampa.Controller.enabled();
         if (!enabled || !enabled.name) return true;
-        // Разрешаем работу хоткеев во время воспроизведения и при открытой нижней панели
         return enabled.name === 'player' ||
                enabled.name === 'player_panel' ||
                enabled.name === 'player_footer';
@@ -105,8 +107,9 @@
 
     function onPanelSpeedChange(e) {
         if (!e || !e.speed) return;
-        var badgeText = e.speed === 'default' ? '1x' : e.speed + 'x';
-        updatePanelBadge('.player-panel__speed', badgeText, e.speed === 'default');
+        var val = String(e.speed);
+        var badgeText = (val === 'default' || val === '1') ? '1x' : val + 'x';
+        updatePanelBadge('.player-panel__speed', badgeText, val === 'default' || val === '1');
     }
 
     function cycleVideoSize() {
@@ -119,13 +122,11 @@
         var nextSize = sizes[nextIndex];
 
         Lampa.Storage.set('player_size', nextSize);
-        Lampa.PlayerVideo.size(nextSize);
-
-        if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
-            Lampa.PlayerPanel.listener.send('size', { size: nextSize });
-        } else {
-            updatePanelBadge('.player-panel__size', nextSize.toUpperCase(), nextSize === 'default');
+        if (Lampa.PlayerVideo && Lampa.PlayerVideo.size) {
+            Lampa.PlayerVideo.size(nextSize);
         }
+
+        updatePanelBadge('.player-panel__size', nextSize.toUpperCase(), nextSize === 'default');
 
         showToast(
             Lampa.Lang.translate('player_video_size') + ': ' +
@@ -147,19 +148,22 @@
         var nextIndex = Math.max(0, Math.min(speeds.length - 1, currentIndex + step));
         var nextSpeed = speeds[nextIndex];
 
-        if (nextSpeed !== current) {
-            Lampa.Storage.set('player_speed', nextSpeed);
-            Lampa.PlayerVideo.speed(nextSpeed);
+        Lampa.Storage.set('player_speed', nextSpeed);
 
-            if (Lampa.PlayerPanel && Lampa.PlayerPanel.listener) {
-                Lampa.PlayerPanel.listener.send('speed', { speed: nextSpeed });
-            } else {
-                var badgeText = nextSpeed === 'default' ? '1x' : nextSpeed + 'x';
-                updatePanelBadge('.player-panel__speed', badgeText, nextSpeed === 'default');
+        if (Lampa.PlayerVideo && Lampa.PlayerVideo.speed) {
+            Lampa.PlayerVideo.speed(nextSpeed);
+        } else {
+            var vid = Lampa.PlayerVideo.video();
+            if (vid) {
+                vid.playbackRate = nextSpeed === 'default' ? 1.0 : parseFloat(nextSpeed);
             }
         }
 
-        var speedText = nextSpeed === 'default'
+        var isDef = (nextSpeed === 'default' || nextSpeed === '1');
+        var badgeText = isDef ? '1x' : nextSpeed + 'x';
+        updatePanelBadge('.player-panel__speed', badgeText, isDef);
+
+        var speedText = isDef
             ? Lampa.Lang.translate('player_speed_default_title')
             : nextSpeed + 'x';
 
@@ -172,7 +176,6 @@
         } else {
             Lampa.PlayerPlaylist.prev();
         }
-        // При смене серии HTML5 video сбрасывает playbackRate на 1.0, синхронизируем UI:
         Lampa.Storage.set('player_speed', 'default', true);
         updatePanelBadge('.player-panel__speed', '1x', true);
     }
@@ -234,7 +237,7 @@
 
         var keyCode = e.keyCode;
 
-        if (Lampa.Select.opened()) {
+        if (Lampa.Select && Lampa.Select.opened && Lampa.Select.opened()) {
             if (CLOSE_MAP[keyCode]) {
                 Lampa.Select.close();
                 stopEvent(e);
@@ -280,8 +283,9 @@
         Lampa.Player.listener.remove('destroy', listenDestroy);
         Lampa.Player.listener.follow('destroy', listenDestroy);
 
-        console.log('Hotkeys', 'Hotkeys 2.1 listener started');
+        console.log('[Hotkeys] listener started v' + PLUGIN_VERSION);
     }
 
     Lampa.Player.listener.follow('ready', startHotkeys);
+    console.log('[Hotkeys] loaded v' + PLUGIN_VERSION);
 })();
